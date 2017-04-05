@@ -1,3 +1,5 @@
-theme: jekyll-theme-minimal
+title: NLP Capstone
+description: Description here
+theme:
 source: nlp-capstone
 permalink: /nlp-capstone/:title.html
