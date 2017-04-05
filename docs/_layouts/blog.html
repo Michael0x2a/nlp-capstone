@@ -14,7 +14,7 @@
   <body>
     <div class="wrapper">
       <header>
-          <h1><a href="{{ site.url }}">
+          <h1><a href="{{ site.url | absolute_url }}">
                   {{ site.title | default: site.github.repository_name }}
               </a></h1>
         <p>{{ site.description | default: site.github.project_tagline }}</p>
@@ -39,7 +39,7 @@
         *  https://disqus.com/admin/universalcode/#configuration-variables
         */
         var disqus_config = function () {
-            this.page.url = "{{ page.url }}";
+            this.page.url = "{{ page.url | absolute_url }}";
             this.page.identifier = "{{ page.title }}";
         };
         (function() { // DON'T EDIT BELOW THIS LINE
