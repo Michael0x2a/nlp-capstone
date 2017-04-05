@@ -1,4 +1,4 @@
 title: NLP Capstone
 description: "For CSE 481"
 baseurl: "nlp-capstone"
-permalink: nlp-capstone/:title.html
+permalink: /nlp-capstone/:title.html
