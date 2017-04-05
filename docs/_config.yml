@@ -1,3 +1,3 @@
 theme: jekyll-theme-minimal
 source: nlp-capstone
-permalink: /:title.html
+permalink: /nlp-capstone/:title.html
