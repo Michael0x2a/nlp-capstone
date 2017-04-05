@@ -1,5 +1,5 @@
 title: NLP Capstone
-description: Description here
+description: "For CSE 481"
 theme:
 source: nlp-capstone
-permalink: /nlp-capstone/:title.html
+permalink: /:title.html
