@@ -2,3 +2,4 @@ title: NLP Capstone
 description: "For CSE 481"
 baseurl: "nlp-capstone"
 permalink: :title.html
+future: true
