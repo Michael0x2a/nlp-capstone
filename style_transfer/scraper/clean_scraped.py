@@ -63,8 +63,8 @@ def apply(func: Callable[[JsonDict], JsonDict],
             json.dump(out, stream, sort_keys=True, indent=4)
 
 def main():
-    apply(remove_junk, join("data", "raw"), join("data", "cleaned"))
-    apply(remove_speakers, join("data", "cleaned"), join("data", "no-speakers"))
+    apply(remove_junk, join("data", "raw"), join("data", "temp_no_junk"))
+    apply(remove_speakers, join("data", "temp_no_junk"), join("data", "cleaned"))
 
 if __name__ == '__main__':
     main()
