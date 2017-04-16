@@ -1,3 +1,19 @@
+'''
+This python module contains code needed to load data from any of our
+datasets (though currently it works only for the Wikipedia detox
+data).
+
+Example of usage:
+
+    from parsing import load_raw_data
+    train_data, dev_data, test_data = load_raw_data()
+
+Each dataset is a list of custom_types.Comment objects.
+
+Note: this module was written before I realized that the Wikipedia
+dataset contained more then just the detox data, so this will likely
+need to be refactored later.
+'''
 from typing import List, Tuple, Any
 import os.path
 import json
