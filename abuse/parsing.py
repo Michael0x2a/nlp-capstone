@@ -76,16 +76,20 @@ def load_raw_data(folder_path: str = 'data/wikipedia-detox-data-v6') -> Tuple[Tr
     save_as_json(train_path, train)
     save_as_json(dev_path, dev)
     save_as_json(test_path, test)
+
     return train, dev, test
 
+def save_small(src: str, dest: str, percentage: float) -> None:
+    train, dev, test = load_raw_data(src)
+
+    train_path = os.path.join(dest, 'train.json')
+    dev_path = os.path.join(dest, 'dev.json')
+    test_path = os.path.join(dest, 'test.json')
+
+    save_as_json(train_path, train[:int(len(train) * percentage)])
+    save_as_json(dev_path, dev[:int(len(dev) * percentage)])
+    save_as_json(test_path, test[:int(len(test) * percentage)])
+
 if __name__ == '__main__':
-    print("Starting")
-    train, dev, test = load_raw_data()
-    print("Done!")
-    print(len(train))
-    print(len(dev))
-    print(len(test))
-    attacks = [c.average.attack for c in train]
-    print("foo")
-    print(statistics.mean(attacks))
+    save_small('data/wikipedia-detox-data-v6', 'data/wikipedia-detox-data-v6-small', 0.1)
 
