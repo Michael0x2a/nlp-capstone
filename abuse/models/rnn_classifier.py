@@ -62,8 +62,12 @@ def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> Paragr
     return [vocab_map[word] for word in para]
 
 
-def make_bidirectional_rnn(x_placeholder, n_hidden_layers, n_classes):
+def make_bidirectional_rnn(x_data, n_words, n_hidden_layers, n_classes):
     with tf.name_scope('bidirectional_rnn'):
+        # Convert shape of [?, paragraph_size, embedding_size] into
+        # a list of [?, embedding_size]
+        x_unstacked = tf.unstack(x_data, n_words, 1)
+
         output_weight = tf.Variable(
                 tf.random_normal([2 * n_hidden_layers, n_classes]),
                 name='output_weight')
@@ -78,7 +82,7 @@ def make_bidirectional_rnn(x_placeholder, n_hidden_layers, n_classes):
         outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
                 forwards_lstm,
                 backwards_lstm,
-                [x_placeholder],
+                x_unstacked,
                 dtype=tf.float32)
 
         # Use the output of the last rnn cell for classification
@@ -90,9 +94,10 @@ def main() -> None:
     # Hyperparameters (?)
     paragraph_size = 500
     batch_size = 120  # Arbitrary choice
-    data_src_path = 'data/wikipedia-detox-data-v6'
+    data_src_path = 'data/wikipedia-detox-data-v6-small'
     training_iters = 200
     n_hidden_layers = 120
+    embedding_size = 32
 
     # Constants
     log_dir = os.path.join("logs", "rnn_classifier")
@@ -114,6 +119,7 @@ def main() -> None:
     # TODO: Refine to handle things like UNK; allow dev data to be
     # unknown beforehand
     vocab_map = make_vocab_mapping(x_train_raw + x_dev_raw)
+    vocab_size = len(vocab_map)
 
     # Convert paragraphs into real_valued vector
     x_train = [vectorize_paragraph(vocab_map, para) for para in x_train_raw]
@@ -126,7 +132,7 @@ def main() -> None:
     # Placeholders for input
     with tf.name_scope('inputs'):
         paragraphs_placeholder = tf.placeholder(
-                tf.float32, 
+                tf.int32, 
                 shape=(None, paragraph_size),
                 name='x_input')
         labels_placeholder = tf.placeholder(
@@ -136,7 +142,15 @@ def main() -> None:
 
     # Define predictor, loss, and optimizer
     with tf.name_scope('prediction'):
-        prediction = make_bidirectional_rnn(paragraphs_placeholder, n_hidden_layers, n_classes)
+        # Make embedding vector for words
+        # Shape is [?, paragraph_size, embedding_size]
+        embedding = tf.Variable(
+                tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
+                name="embedding")
+        x_data = tf.nn.embedding_lookup(embedding, paragraphs_placeholder)
+
+        prediction = make_bidirectional_rnn(
+                x_data, paragraph_size, n_hidden_layers, n_classes)
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
                 logits=prediction, 
                 labels=labels_placeholder),
