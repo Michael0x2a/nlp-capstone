@@ -2,10 +2,15 @@ from typing import List, Tuple
 import os.path
 import shutil
 
+import numpy as np
 import tensorflow as tf
+import nltk
+import sklearn.metrics
 
 from parsing import load_raw_data
 from custom_types import *
+
+print("Done loading imports")
 
 # Labels
 IS_ATTACK = 1
@@ -35,7 +40,7 @@ def extract_is_attack(comments: List[Comment],
     for comment in comments:
         # TODO: Better-tokenize sentence
         x_values.append(truncate_and_pad(
-                comment.comment.split(" "), 
+                nltk.word_tokenize(comment.comment),
                 max_length))
 
         # TODO: Train in more granularity? Besides IS_ATTACK and IS_OK,
@@ -91,11 +96,13 @@ def make_bidirectional_rnn(x_data, n_words, n_hidden_layers, n_classes):
 
 
 def main() -> None:
+    print("Start...")
+
     # Hyperparameters (?)
     paragraph_size = 500
     batch_size = 120  # Arbitrary choice
     data_src_path = 'data/wikipedia-detox-data-v6-small'
-    training_iters = 200
+    training_iters = 2
     n_hidden_layers = 120
     embedding_size = 32
 
@@ -107,7 +114,9 @@ def main() -> None:
     shutil.rmtree(log_dir, ignore_errors=True)
 
     # Load data
+    print("Loading data...")
     train_data, dev_data, test_data = load_raw_data(data_src_path)
+    train_data = train_data[:240]
 
     # Take data, and split into x/y pairs, truncating input to
     # length 500 (including start and end tokens. Shorter sentences
@@ -118,6 +127,7 @@ def main() -> None:
     # Make vocab list
     # TODO: Refine to handle things like UNK; allow dev data to be
     # unknown beforehand
+    print("Vectorizing and prepping...")
     vocab_map = make_vocab_mapping(x_train_raw + x_dev_raw)
     vocab_size = len(vocab_map)
 
@@ -130,6 +140,7 @@ def main() -> None:
     # Begin defining tensorflow model
 
     # Placeholders for input
+    print("Building model...")
     with tf.name_scope('inputs'):
         paragraphs_placeholder = tf.placeholder(
                 tf.int32, 
@@ -164,6 +175,8 @@ def main() -> None:
                 tf.cast(correct_prediction, tf.float32),
                 name='accuracy')
 
+        y_pred = tf.argmax(prediction, 1)
+
     # Log data for tensorboard
     tf.summary.scalar('loss', cost)
     tf.summary.scalar('accuracy', accuracy)
@@ -177,6 +190,7 @@ def main() -> None:
     #saver = tf.train.Saver()
 
     # Begin actually training!
+    print("Training...")
     with tf.Session() as session:
         n_batches = len(x_train) // batch_size
 
@@ -204,15 +218,27 @@ def main() -> None:
                 i, loss, acc))
             train_writer.add_summary(summary_data, i)
 
+            # Evaluate on dev
+            print("    Evaluating on dev...")
+            batch_dev_data = {
+                paragraphs_placeholder: x_dev,
+                labels_placeholder: y_dev
+            }
+            acc, y_pred_val = session.run([accuracy, y_pred], feed_dict=batch_dev_data)
+            y_true = np.argmax(np.asarray(y_dev), 1)
+
+            print("    Accuracy:   {:.6f}".format(acc))
+            print("    Accuracy 2: {:.6f}".format(sklearn.metrics.accuracy_score(y_true, y_pred_val)))
+            print("    Precision:  {:.6f}".format(sklearn.metrics.precision_score(y_true, y_pred_val)))
+            print("    Recall:     {:.6f}".format(sklearn.metrics.recall_score(y_true, y_pred_val)))
+            print("    F1 score:   {:.6f}".format(sklearn.metrics.f1_score(y_true, y_pred_val)))
+            print("    AUC score:  {}".format(sklearn.metrics.roc_auc_score(y_true, y_pred_val)))
+            print("    Confusion matrix:")
+            print(sklearn.metrics.confusion_matrix(y_true, y_pred_val))
+            print()
+
         print("Done training!")
 
-        # Evaluate on dev
-        batch_data = {
-            paragraphs_placeholder: x_dev,
-            labels_placeholder: y_dev
-        }
-        acc = session.run(accuracy, feed_dict=batch_data)
-        print("Final accuracy on full dev: {:.6f}".format(acc))
 
 
     #session = tf.Session()
