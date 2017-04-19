@@ -99,11 +99,11 @@ def main() -> None:
     print("Start...")
 
     # Hyperparameters (?)
-    paragraph_size = 500
+    paragraph_size = 100
     batch_size = 120  # Arbitrary choice
-    data_src_path = 'data/wikipedia-detox-data-v6-small'
-    training_iters = 2
-    n_hidden_layers = 120
+    data_src_path = 'data/wikipedia-detox-data-v6'
+    training_iters = 10
+    n_hidden_layers = 5
     embedding_size = 32
 
     # Constants
@@ -116,7 +116,6 @@ def main() -> None:
     # Load data
     print("Loading data...")
     train_data, dev_data, test_data = load_raw_data(data_src_path)
-    train_data = train_data[:240]
 
     # Take data, and split into x/y pairs, truncating input to
     # length 500 (including start and end tokens. Shorter sentences
@@ -191,7 +190,7 @@ def main() -> None:
 
     # Begin actually training!
     print("Training...")
-    with tf.Session() as session:
+    with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as session:
         n_batches = len(x_train) // batch_size
 
         session.run(init)
