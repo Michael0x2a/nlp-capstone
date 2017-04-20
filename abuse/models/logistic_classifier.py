@@ -151,22 +151,29 @@ class LogisticClassifier(object):
         return preds
 
 
-    def save(self, pathname=None):
+    def save(self, filename="model.ckpt", pathname=None):
         if pathname is None:
             pathname = self.summary_path
-        self.saver.save(self.session, pathname+"/model.ckpt")
+        self.saver.save(self.session, os.path.join(pathname, filename))
 
-    def restore(self, run_num=None, pathname=None):
+    def restore(self, run_num=None, filename="model.ckpt", pathname=None):
+        # doesn't restore summary_path, run_num, it count, or epoch
         if pathname is None:
             if run_num is None:
                 run_num = self.run_num - 1
             pathname = self.base_summary_path.format(run_num)
             if not os.path.exists(pathname):
-                pathname = glob.glob(pathname + "-*")[0]
+                run_paths = glob.glob(pathname + "-*")
+                if len(run_paths) < 1:
+                    print("No run with that number.")
+                    return
+                elif len(run_paths) > 1:
+                    print("Multiple runs with that number.")
+                pathname = run_paths[0]
 
         with self.graph.as_default():
             with self.graph.device("/gpu:0"):
-                self.saver.restore(self.session, pathname+"/model.ckpt")
+                self.saver.restore(self.session, os.path.join(pathname, filename))
 
 def csrToStv(csr):
     indices = np.array(csr.nonzero()).T
