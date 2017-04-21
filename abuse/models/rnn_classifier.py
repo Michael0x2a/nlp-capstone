@@ -7,8 +7,14 @@ import tensorflow as tf
 import nltk
 import sklearn.metrics
 
+import utils.file_manip as fmanip
 from parsing import load_raw_data
 from custom_types import *
+
+
+from models.model import Model, ClassificationMetrics
+
+
 
 print("Done loading imports")
 
@@ -67,6 +73,119 @@ def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> Paragr
     return [vocab_map[word] for word in para]
 
 
+
+class RnnClassifier(Model[str, int]):
+    def __init__(self) -> None:
+        '''For the sake of consistency, the constructor for all subclasses
+        should take in no params and only set default values for parameters.'''
+        # Default hyperparameters
+        self.paragraph_size = 100
+        self.batch_size = 120
+        self.training_iters = 10
+        self.n_hidden_layers = 5
+        self.embedding_size = 32
+        self.n_classes = 2
+        self.log_dir = fmanip.join('logs', 'rnn')
+
+        # Particular tensorflow nodes worth keeping a reference to
+        self.x_input = None
+        self.y_input = None
+        self.predictor = None
+        self.loss = None
+        self.optimizer = None
+        self.summary = None
+        self.init = None
+        self.logger = None
+
+
+    def build_model(self) -> None:
+        '''Builds and saves the model, using the currently set params.'''
+        with tf.name_scope('rnn-classifier'):
+            self.x_input, self.y_input = self._build_input()
+            self.predictor, self.loss, self.optimizer = self._build_predictor()
+            self.output, accuracy = self._build_evaluator()
+
+            tf.summary.scalar('loss', self.loss)
+            tf.summary.scalar('accuracy', accuracy)
+
+            self.summaries = tf.summary.merge_all()
+            self.logger = tf.summary.FileWriter(self.log_dir, graph=tf.get_default_graph())
+
+    def _build_input(self):
+        with tf.name_scope('inputs'):
+            x_input = tf.placeholder(
+                    tf.int32, 
+                    shape=(None, paragraph_size),
+                    name='x_input')
+            y_input = tf.placeholder(
+                    tf.float32,
+                    shape=(None, n_classes),
+                    name='y_input')
+            return x_input, y_input
+
+    with tf.name_scope('prediction'):
+        # Make embedding vector for words
+        # Shape is [?, paragraph_size, embedding_size]
+        embedding = tf.Variable(
+                tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
+                name="embedding")
+        x_data = tf.nn.embedding_lookup(embedding, paragraphs_placeholder)
+
+        prediction = make_bidirectional_rnn(
+                x_data, paragraph_size, n_hidden_layers, n_classes)
+        cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+                logits=prediction, 
+                labels=labels_placeholder),
+                name='cost')
+        optimizer = tf.train.AdamOptimizer().minimize(cost)
+
+
+
+
+
+
+
+    def reset(self) -> None:
+        '''Resets the model, clearing all training data/any learned information'''
+        raise NotImplementedError()
+
+    def train(self, xs: List[TInput], ys: List[TLabel], **params) -> None:
+        '''Trains the model. The expectation is that this method is called
+        exactly once.'''
+        raise NotImplementedError()
+
+    def train_iterative(self, xs: List[TInput], ys: List[TLabel], **params) -> Iterable[List[TLabel]]:
+        '''Also trains the model, but should yield after each epoch so the client
+        can analyze data/collect statistics.'''
+        raise NotImplementedError()
+
+    def predict_single(self, xs: TInput) -> TLabel:
+        raise NotImplementedError()
+
+    def _save_model(self, path: str) -> None:
+        raise NotImplementedError()
+
+    def _restore_model(self, path: str) -> None:
+        raise NotImplementedError()
+
+    def get_parameters(self) -> Dict[str, Any]:
+        raise NotImplementedError()
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        raise NotImplementedError()
+
+
+
+
+
+
+
+
+
+
+
+
+
 def make_bidirectional_rnn(x_data, n_words, n_hidden_layers, n_classes):
     with tf.name_scope('bidirectional_rnn'):
         # Convert shape of [?, paragraph_size, embedding_size] into
@@ -93,6 +212,8 @@ def make_bidirectional_rnn(x_data, n_words, n_hidden_layers, n_classes):
         # Use the output of the last rnn cell for classification
         prediction = tf.matmul(outputs[-1], output_weight) + output_bias
         return prediction
+
+
 
 
 def main() -> None:
