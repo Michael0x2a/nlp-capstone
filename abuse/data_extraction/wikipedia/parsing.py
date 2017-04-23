@@ -89,6 +89,25 @@ def save_small(prefix, ann_cls, src, dest, percentage):
         save_as_json(test_path, test[:int(len(test) * percentage)])
 
 if __name__ == '__main__':
-    save_small('attack', AttackAnnotation, 'data/wikipedia-attack-data-v6', 'data/wikipedia-attack-data-v6-small', 0.1)
-    save_small('toxicity', ToxicityAnnotation, 'data/wikipedia-toxicity-data-v2', 'data/wikipedia-toxicity-data-v2-small', 0.1)
+    save_small(
+            'attack', 
+            AttackAnnotation, 
+            'data/wikipedia-attack-data-v6', 
+            'data/wikipedia-attack-data-v6-small', 
+            0.1)
 
+    save_small(
+            'toxicity', 
+            ToxicityAnnotation, 
+            'data/wikipedia-toxicity-data-v2', 
+            'data/wikipedia-toxicity-data-v2-small', 
+            0.1
+    )
+
+    save_small(
+            'aggression', 
+            AggressionAnnotation, 
+            'data/wikipedia-aggression-data-v5', 
+            'data/wikipedia-aggression-data-v5-small', 
+            0.1
+    )
