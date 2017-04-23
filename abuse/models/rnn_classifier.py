@@ -63,9 +63,28 @@ def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> List[W
     return [vocab_map.get(word, unk_id) for word in para]
 
 class RnnClassifier(Model[str]):
+    '''
+    RNN classifier
+
+    --comment_size [int; default=100]
+        How long to cap the length of each comment (padding if
+        the comment is shorter)
+
+    --batch_size [int; default=125]
+
+    --epoch_size [int; default=10]
+
+    --n_hidden_layers [int; default=120]
+
+    --vocab_size [int; default=141000]
+
+    --embedding_size [int; default=32]
+
+    --log_dir [str; default="logs/rnn"]
+    '''
     def __init__(self, restore_from: Optional[str] = None,\
-                       paragraph_size: int = 100,
-                       batch_size: int = 120,
+                       comment_size: int = 100,
+                       batch_size: int = 125,
                        epoch_size: int = 10,
                        n_hidden_layers: int = 120,
                        vocab_size: int = 141000,
@@ -73,7 +92,7 @@ class RnnClassifier(Model[str]):
                        n_classes: int = 2,
                        log_dir: str = fmanip.join('logs', 'rnn')) -> None:
         # Hyperparameters
-        self.paragraph_size = paragraph_size
+        self.comment_size = comment_size
         self.batch_size = batch_size
         self.epoch_size = epoch_size
         self.n_hidden_layers = n_hidden_layers
@@ -81,6 +100,8 @@ class RnnClassifier(Model[str]):
         self.embedding_size = embedding_size
         self.n_classes = n_classes
         self.log_dir = log_dir
+
+        fmanip.delete_folder(log_dir)
 
         # Particular tensorflow nodes worth keeping a reference to
         # Types are set to Any because mypy doesn't yet understand
@@ -120,7 +141,7 @@ class RnnClassifier(Model[str]):
 
     def get_parameters(self) -> Dict[str, Any]:
         return {
-                'paragraph_size': self.paragraph_size,
+                'comment_size': self.comment_size,
                 'batch_size': self.batch_size,
                 'epoch_size': self.epoch_size,
                 'n_hidden_layers': self.n_hidden_layers,
@@ -157,7 +178,7 @@ class RnnClassifier(Model[str]):
         with tf.name_scope('inputs'):
             self.x_input = tf.placeholder(
                     tf.int32, 
-                    shape=(None, self.paragraph_size),
+                    shape=(None, self.comment_size),
                     name='x_input')
             self.y_input = tf.placeholder(
                     tf.int32,
@@ -204,9 +225,9 @@ class RnnClassifier(Model[str]):
 
     def _make_bidirectional_rnn(self, word_vectors: Any) -> Any:
         with tf.name_scope('bidirectional_rnn'):
-            # Convert shape of [?, paragraph_size, embedding_size] into
+            # Convert shape of [?, comment_size, embedding_size] into
             # a list of [?, embedding_size]
-            x_unstacked = tf.unstack(word_vectors, self.paragraph_size, 1)
+            x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
 
             output_weight = tf.Variable(
                     tf.random_normal([2 * self.n_hidden_layers, self.n_classes]),
@@ -232,7 +253,7 @@ class RnnClassifier(Model[str]):
     def train(self, xs: List[str], ys: List[int]) -> None:
         '''Trains the model. The expectation is that this method is called
         exactly once.'''
-        x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.paragraph_size) for x in xs]
+        x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
         self.vocab_map = make_vocab_mapping(x_data_raw, self.vocab_size)
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
 
@@ -270,7 +291,7 @@ class RnnClassifier(Model[str]):
 
     def predict(self, xs: List[str]) -> List[int]:
         assert self.vocab_map is not None
-        x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.paragraph_size) for x in xs]
+        x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
         batch_data = {self.x_input: x_final}
         return cast(List[int], self.session.run(self.output, feed_dict=batch_data))

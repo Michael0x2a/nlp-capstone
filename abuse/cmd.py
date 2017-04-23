@@ -8,6 +8,7 @@ import sys
 
 from data_extraction.wikipedia import *
 from models.bag_of_words import BagOfWordsClassifier
+from models.rnn_classifier import RnnClassifier
 from models.model import Model, ClassificationMetrics
 
 Primitive = Union[int, float, str, bool]
@@ -77,6 +78,7 @@ def main() -> None:
 
     models = {
             'bag_of_words': BagOfWordsClassifier,
+            'rnn': RnnClassifier,
     }
 
     # Extracting and verifying command line args
@@ -101,14 +103,25 @@ def main() -> None:
     print("Training...")
     classifier.train(train_x, train_y)
 
-    print("Evaluation...")
-    predicted_y = classifier.predict(train_x)
+    print("Evaluating full training set...")
+    train_predicted_y = classifier.predict(train_x)
 
-    print("Results:")
-    metrics = ClassificationMetrics(train_y, predicted_y)
+    print("Training set results:")
+    metrics = ClassificationMetrics(train_y, train_predicted_y)
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
+    print()
+
+    print("Evaluating full dev/test set...")
+    test_predicted_y = classifier.predict(test_x)
+
+    print("Dev/test set results:")
+    metrics = ClassificationMetrics(test_y, test_predicted_y)
+    print(metrics.get_header())
+    print(metrics.to_table_row())
+    print(metrics.confusion_matrix)
+    print()
 
 
 def verify_choice(name: str, choices: Dict[str, Any], choice: str) -> None:
