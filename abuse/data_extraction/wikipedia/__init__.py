@@ -14,7 +14,7 @@ def load_attack_data(prefix: str = 'wikipedia-attack-data-v6',
     path = fmanip.join('data', prefix)
     return load_raw_data(path, 'attack', AttackAnnotation)
 
-def load_aggression_data(prefix: str = 'wikipedia-aggression-data-v?',
+def load_aggression_data(prefix: str = 'wikipedia-aggression-data-v5',
         small: bool = False) -> Tuple[AggressionData, AggressionData, AggressionData]:
     if small:
         prefix += '-small'

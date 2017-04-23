@@ -13,17 +13,30 @@ from models.model import Model, ClassificationMetrics
 
 
 class BagOfWordsClassifier(Model[str]):
+    '''
+    Bag of words classifier:
+
+    --max_features [int; default = 10000]
+        Max number of features to use in count vectorizer
+
+    TODO: Finish documenting
+    '''
+
     # Core methods that must be implemented
     def __init__(self, restore_from: Optional[str] = None,
                        max_features: int = 10000,
-                       ngram_range: Tuple[int, int] = (1, 2),
+                       ngram_range_lo: int = 1,
+                       ngram_range_hi: int = 2,
                        norm: str = 'l2') -> None:
         self.max_features = max_features
-        self.ngram_range = ngram_range
+        self.ngram_range_lo = ngram_range_lo
+        self.ngram_range_hi = ngram_range_hi
         self.norm = norm
 
         self.classifier = Pipeline([
-            ('vect', CountVectorizer(max_features=10000, ngram_range=(1, 2))),
+            ('vect', CountVectorizer(
+                        max_features=10000, 
+                        ngram_range=(self.ngram_range_lo, self.ngram_range_hi))),
             ('tfidf', TfidfTransformer(norm='l2')),
             ('clf', LogisticRegression())
         ])
@@ -31,7 +44,8 @@ class BagOfWordsClassifier(Model[str]):
     def get_parameters(self) -> Dict[str, Any]:
         return {
                 'max_features': self.max_features,
-                'ngram_range': list(self.ngram_range),
+                'ngram_range_lo': self.ngram_range_lo,
+                'ngram_range_hi': self.ngram_range_hi,
                 'norm': self.norm,
         }
 
