@@ -12,6 +12,8 @@ import shutil
 from custom_types import JsonDict
 
 def join(*path_fragments: str) -> str:
+    '''Acts like os.path.join, except it normalizes / and \ separators
+    so this works cleanly on all operating systems.'''
     normalized = [os.path.normpath(frag) for frag in path_fragments]
     return os.path.join(*normalized)
 

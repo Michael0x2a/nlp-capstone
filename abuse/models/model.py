@@ -1,7 +1,7 @@
 from typing import Dict, List, Any, Generic, TypeVar, Iterable, Optional, Tuple
 import os.path
 
-import sklearn.metrics as metrics
+import sklearn.metrics as metrics  # type: ignore
 
 import utils.file_manip as fmanip
 

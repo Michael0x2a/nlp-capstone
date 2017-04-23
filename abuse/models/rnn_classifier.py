@@ -10,7 +10,7 @@ import nltk  # type: ignore
 import sklearn.metrics  # type: ignore
 
 import utils.file_manip as fmanip
-from parsing import load_raw_data
+from data_extraction.wikipedia import * 
 from custom_types import *
 
 from models.model import Model, ClassificationMetrics
@@ -276,7 +276,7 @@ class RnnClassifier(Model[str]):
         return cast(List[int], self.session.run(self.output, feed_dict=batch_data))
 
 
-def extract_data(comments: List[Comment]) -> Tuple[List[str], List[int]]:
+def extract_data(comments: AttackData) -> Tuple[List[str], List[int]]:
     x_values = []
     y_values = []
     for comment in comments:
@@ -299,7 +299,7 @@ def main() -> None:
 
     # Load data
     print("Loading data...")
-    train_data, dev_data, test_data = load_raw_data(data_src_path)
+    train_data, dev_data, test_data = load_attack_data(data_src_path)
     x_train_raw, y_train = extract_data(train_data)
     x_dev_raw, y_dev = extract_data(dev_data)
 

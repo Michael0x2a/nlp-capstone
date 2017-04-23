@@ -7,7 +7,7 @@ import sklearn.metrics  # type: ignore
 import numpy as np  # type: ignore
 
 from custom_types import *
-from parsing import load_raw_data
+from data_extraction.wikipedia import *
 from models.model import Model, ClassificationMetrics
 
 
@@ -47,49 +47,11 @@ class BagOfWordsClassifier(Model[str]):
         return cast(List[int], self.classifier.predict(xs))
 
 
-def bag_of_words_model(train: TrainData, dev: DevData, test: TestData) -> None:
-    clf = Pipeline([
-        ('vect', CountVectorizer(max_features=10000, ngram_range=(1, 2))),
-        ('tfidf', TfidfTransformer(norm='l2')),
-        ('clf', LogisticRegression())
-    ])
-
-    train_comment = [c.comment for c in train]
-    train_attack = [c.average.attack > 0.5 for c in train]
-
-    dev_comment = [c.comment for c in dev]
-    dev_attack = [c.average.attack > 0.5 for c in dev]
-
-    clf.fit(train_comment, train_attack)
-
-    # Evaluation
-    dev_attack_predicted = clf.predict(dev_comment)
-
-    print("    Accuracy:   {:.6f}".format(sklearn.metrics.accuracy_score(dev_attack, dev_attack_predicted)))
-    print("    Precision:  {:.6f}".format(sklearn.metrics.precision_score(dev_attack, dev_attack_predicted)))
-    print("    Recall:     {:.6f}".format(sklearn.metrics.recall_score(dev_attack, dev_attack_predicted)))
-    print("    F1 score:   {:.6f}".format(sklearn.metrics.f1_score(dev_attack, dev_attack_predicted)))
-    print("    AUC score:  {}".format(sklearn.metrics.roc_auc_score(dev_attack, dev_attack_predicted)))
-    print("    Confusion matrix:")
-    print(sklearn.metrics.confusion_matrix(dev_attack, dev_attack_predicted))
-    print()
-
-    count = 0
-    for idx, (actual, predicted) in enumerate(zip(dev_attack, dev_attack_predicted)):
-        if actual != predicted:
-            print(dev[idx].comment)
-            print('Attack score={}, is_attack={}, predicted={}'.format(dev[idx].average.attack, actual, predicted))
-            print()
-            count += 1
-
-        if count == 30:
-            break
-
 # TODO: Refactor; this is identical to the function in models/rnn_classifier.py
 IS_ATTACK = 1
 IS_OK = 0
 
-def extract_data(comments: List[Comment]) -> Tuple[List[str], List[int]]:
+def extract_data(comments: AttackData) -> Tuple[List[str], List[int]]:
     x_values = []
     y_values = []
     for comment in comments:
@@ -102,16 +64,13 @@ def extract_data(comments: List[Comment]) -> Tuple[List[str], List[int]]:
 def main2() -> None:
     print("Starting...")
 
-    # Meta parameters
-    data_src_path = 'data/wikipedia-detox-data-v6'
-
     # Classifier setup
     print("Building model...")
     classifier = BagOfWordsClassifier()
 
     # Load data
     print("Loading data...")
-    train_data, dev_data, test_data = load_raw_data(data_src_path)
+    train_data, dev_data, test_data = load_attack_data()
     x_train_raw, y_train = extract_data(train_data)
     x_dev_raw, y_dev = extract_data(dev_data)
 
