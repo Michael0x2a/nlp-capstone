@@ -1,11 +1,14 @@
 import os
 import glob
 import random
+from math import ceil
 import numpy as np
 from scipy.sparse import csr_matrix
 import tensorflow as tf
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import recall_score, precision_score, f1_score, roc_auc_score
+from sklearn.metrics import recall_score, precision_score, f1_score, roc_auc_score, roc_curve
+from scipy.stats import spearmanr
+import matplotlib.pyplot as plt
 
 # default path to save things in
 SUMMARY_PATH = "runs/lr{0}"
@@ -29,7 +32,8 @@ class LogisticClassifier(object):
                 self.counts = tf.sparse_placeholder(tf.float32, [None, self.num_grams], "counts")
                 self.target_labels = tf.placeholder(tf.bool, [None], "target_labels")
 
-                self.pred_labels, self.logits, self.regularizer = self.build_model(self.counts)
+                # self.pred_labels
+                self.logits, self.probabilities, self.regularizer = self.build_model(self.counts)
 
                 # I'm pretty sure this is necessary to add things to the summary
                 self.loss = self.calculate_loss(self.logits, self.target_labels, self.regularizer)
@@ -64,11 +68,12 @@ class LogisticClassifier(object):
             regularizer = tf.nn.l2_loss(W)
 
         with tf.name_scope("prediction"):
-            labels = tf.round(tf.sigmoid(logits))
+            probabilities = tf.sigmoid(logits)
+            # labels = tf.round(probabilities)
 
-        return labels, logits, regularizer
+        return logits, probabilities, regularizer
 
-    def calculate_loss(self, logits, labels, regularizer, beta=0.01, pos_weight=1):
+    def calculate_loss(self, logits, labels, regularizer, reg_lambda=1e-7, pos_weight=1):
         with self.graph.as_default():
             with self.graph.device("/gpu:0"):
                 with tf.name_scope("loss"):
@@ -76,7 +81,7 @@ class LogisticClassifier(object):
                         logits=logits, targets=tf.to_float(labels), pos_weight=pos_weight)
                     cross_entropy_mean = tf.reduce_mean(cross_entropy, name="x_entropy_mean")
 
-                    loss = tf.reduce_mean(cross_entropy_mean + beta * regularizer)
+                    loss = tf.reduce_mean(cross_entropy_mean + reg_lambda * regularizer)
 
                     tf.summary.scalar("x_entropy_mean", cross_entropy_mean)
                     tf.summary.scalar("loss", loss)
@@ -94,23 +99,21 @@ class LogisticClassifier(object):
 
                     return op
 
-    def train(self, counts, labels, epochs=1, batch_size=32, rate=0.0001, epsilon=1e-8, beta=0.01, pos_weight=10, reset=True):
+    def train(self, counts, labels, epochs=1, batch_size=32, rate=0.0001, epsilon=1e-8, reg_lambda=1e-7, pos_weight=10, reset=True):
         if reset:
             self.reset()
-            loss = self.calculate_loss(self.logits, self.target_labels, self.regularizer, beta, pos_weight)
+            loss = self.calculate_loss(self.logits, self.target_labels, self.regularizer, reg_lambda, pos_weight)
             # self.loss = loss
             self.train_op = self.make_train_op(loss, rate, epsilon, initialize=reset)
 
+        batch_count = ceil(len(labels) / batch_size)
         indices = list(range(len(labels)))
         writer = tf.summary.FileWriter(self.summary_path, self.graph)
 
-        print("Training")
 
         for _ in range(epochs):
             self.epoch += 1
-            print("===============")
-            print("EPOCH", self.epoch)
-            print("===============")
+            print("=== EPOCH", self.epoch, "===")
 
             random.shuffle(indices)
             batches = chunks(indices, batch_size)
@@ -119,30 +122,32 @@ class LogisticClassifier(object):
             for batch in batches:
                 self.it += 1
                 i += 1
-                if i % 100 == 0:
-                    print("batch", i)
-                batch_counts = csrToStv(counts[batch])
+                if i % 10 == 0:
+                    print("Training batch", i, "of", batch_count, end="\r")
+                batch_counts = csr_to_stv(counts[batch])
                 summary, _ = self.session.run([self.summary, self.train_op],
                                               {self.counts: batch_counts,
                                                self.target_labels: labels[batch]})
                 writer.add_summary(summary, self.it)
+            # clear current line for any reasonable batch count
+            print("                                      ", end="\r")
         writer.close()
 
     def test(self, counts, labels):
-        pred = np.empty_like(labels)
-        print("Testing")
-        for index in range(len(labels)):
-            pred[index] = self.session.run(self.pred_labels,
-                                           {self.counts: csrToStv(counts[index]),
-                                            self.target_labels: [labels[index]]})[0]
-        print("AUC:", roc_auc_score(labels, pred))
-        print("Precision:", precision_score(labels, pred))
-        print("Recall:", recall_score(labels, pred))
-        print("F1:", f1_score(labels, pred))
-        return pred
+        probs = np.empty_like(labels, dtype=np.float32)
+        for i, (count, label) in enumerate(zip(counts, labels)):  # range(len(labels))
+            if i % 500 == 0:
+                print("Testing number", i, "of", len(labels), end="\r")
+            probs[i] = self.session.run(self.probabilities,
+                                        {self.counts: csr_to_stv(count),  # counts[index]
+                                         self.target_labels: [label]})[0]  # labels[index]
+        print("                                      ", end="\r")
+        pred = probs.round()
+        evaluate(labels, pred)
+        return probs
 
-    def train_test(self, train_counts, train_labels, test_counts, test_labels, epochs=1, *args, **kwargs):
-        self.train(train_counts, train_labels, *args, **kwargs)
+    def train_test(self, train_counts, train_labels, test_counts, test_labels, epochs=1, reset=True, *args, **kwargs):
+        self.train(train_counts, train_labels, *args, **kwargs, reset=reset)
         preds = []
         preds.append(self.test(test_counts, test_labels))
         for _ in range(1, epochs):
@@ -150,32 +155,45 @@ class LogisticClassifier(object):
             preds.append(self.test(test_counts, test_labels))
         return preds
 
-
-    def save(self, pathname=None):
+    def save(self, filename="model.ckpt", pathname=None):
         if pathname is None:
             pathname = self.summary_path
-        self.saver.save(self.session, pathname+"/model.ckpt")
+        self.saver.save(self.session, os.path.join(pathname, filename))
 
-    def restore(self, run_num=None, pathname=None):
+    def restore(self, run_num=None, filename="model.ckpt", pathname=None):
+        # doesn't restore summary_path, run_num, it count, or epoch
         if pathname is None:
             if run_num is None:
                 run_num = self.run_num - 1
             pathname = self.base_summary_path.format(run_num)
             if not os.path.exists(pathname):
-                pathname = glob.glob(pathname + "-*")[0]
+                run_paths = glob.glob(pathname + "-*")
+                if len(run_paths) < 1:
+                    print("No run with that number.")
+                    return
+                elif len(run_paths) > 1:
+                    print("Multiple runs with that number.")
+                pathname = run_paths[0]
 
         with self.graph.as_default():
             with self.graph.device("/gpu:0"):
-                self.saver.restore(self.session, pathname+"/model.ckpt")
+                self.saver.restore(self.session, os.path.join(pathname, filename))
 
-def csrToStv(csr):
+def evaluate(labels, pred):
+    print("AUC:", roc_auc_score(labels, pred))
+    print("Spearman:", spearmanr(labels, pred).correlation)
+    print("Precision:", precision_score(labels, pred))
+    print("Recall:", recall_score(labels, pred))
+    print("F1:", f1_score(labels, pred))
+
+def csr_to_stv(csr):
     indices = np.array(csr.nonzero()).T
     return tf.SparseTensorValue(indices, csr.data, csr.shape)
 
-def toTfidf(train, dev, test):
+def to_tfidf(train, dev, test):
     data = train + dev + test
     comments = [c.comment for c in data]
-    sparse_counts = TfidfVectorizer(norm='l2', ngram_range=(1,5)).fit_transform(comments)  # lowercase = False?
+    sparse_counts = TfidfVectorizer(norm='l2', ngram_range=(1,5), max_features=30000, dtype=np.float32).fit_transform(comments)  # lowercase = False?
 
     train_counts = sparse_counts[:len(train)]
     dev_counts = sparse_counts[len(train):len(train) + len(dev)]
@@ -211,3 +229,9 @@ def load_csr(filename):
     loader = np.load(filename)
     return csr_matrix((loader['data'], loader['indices'], loader['indptr']),
                       shape=loader['shape'])
+
+def show_roc_curve(labels, probs):
+    fpr, tpr, thresholds = roc_curve(labels, probs)
+    plt.plot(fpr, tpr)
+    plt.show()
+    return fpr, tpr, thresholds
