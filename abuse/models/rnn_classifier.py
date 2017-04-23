@@ -1,12 +1,13 @@
-from typing import List, Tuple, Optional, Dict 
+from typing import List, Tuple, Optional, Dict, cast
 import os.path
 import shutil
+import json
 from collections import Counter
 
-import numpy as np
-import tensorflow as tf
-import nltk
-import sklearn.metrics
+import numpy as np  # type: ignore
+import tensorflow as tf  # type: ignore
+import nltk  # type: ignore
+import sklearn.metrics  # type: ignore
 
 import utils.file_manip as fmanip
 from parsing import load_raw_data
@@ -62,7 +63,8 @@ def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> List[W
     return [vocab_map.get(word, unk_id) for word in para]
 
 class RnnClassifier(Model[str]):
-    def __init__(self, paragraph_size: int = 100,
+    def __init__(self, restore_from: Optional[str] = None,\
+                       paragraph_size: int = 100,
                        batch_size: int = 120,
                        epoch_size: int = 10,
                        n_hidden_layers: int = 120,
@@ -70,9 +72,6 @@ class RnnClassifier(Model[str]):
                        embedding_size: int = 32,
                        n_classes: int = 2,
                        log_dir: str = fmanip.join('logs', 'rnn')) -> None:
-        '''For the sake of consistency, the constructor for all subclasses
-        should take in an arbitrary set of parameters, and do very little
-        else. All parameters should have a default value.'''
         # Hyperparameters
         self.paragraph_size = paragraph_size
         self.batch_size = batch_size
@@ -88,6 +87,7 @@ class RnnClassifier(Model[str]):
         # the tensorflow library
         self.x_input = None     # type: Any
         self.y_input = None     # type: Any
+        self.y_hot = None       # type: Any
         self.predictor = None   # type: Any
         self.loss = None        # type: Any
         self.optimizer = None   # type: Any
@@ -99,9 +99,15 @@ class RnnClassifier(Model[str]):
 
         self.vocab_map = None   # type: Optional[Dict[str, WordId]]
 
+        if restore_from is None:
+            self._build_model()
+        else:
+            raise AssertionError("Restoration functionality not yet implemented")
+
     def _assert_all_setup(self) -> None:
         assert self.x_input is not None
         assert self.y_input is not None
+        assert self.y_hot is not None
         assert self.predictor is not None
         assert self.loss is not None
         assert self.optimizer is not None
@@ -131,12 +137,14 @@ class RnnClassifier(Model[str]):
     def _restore_model(self, path: str) -> None:
         raise NotImplementedError()
 
-    def build_model(self) -> None:
-        '''Builds and saves the model, using the currently set params.'''
+    def _build_model(self) -> None:
+        '''Builds the model, using the currently set params.'''
         with tf.name_scope('rnn-classifier'):
             self._build_input()
             self._build_predictor()
             self._build_evaluator()
+
+            print('output_shape', self.output.shape)
 
             self.summary = tf.summary.merge_all()
             self.logger = tf.summary.FileWriter(self.log_dir, graph=tf.get_default_graph())
@@ -152,9 +160,17 @@ class RnnClassifier(Model[str]):
                     shape=(None, self.paragraph_size),
                     name='x_input')
             self.y_input = tf.placeholder(
-                    tf.float32,
-                    shape=(None, self.n_classes),
+                    tf.int32,
+                    shape=(None,),
                     name='y_input')
+            self.y_hot = tf.one_hot(
+                    self.y_input,
+                    depth=self.n_classes,
+                    on_value=1.0,
+                    off_value=0.0,
+                    dtype=tf.float32,
+                    name='y_hot_encoded')
+            print('y_hot_shape', self.y_hot.shape)
 
     def _build_predictor(self) -> None:
         with tf.name_scope('prediction'):
@@ -168,7 +184,7 @@ class RnnClassifier(Model[str]):
             self.predictor = self._make_bidirectional_rnn(word_vectors)
             self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
                     logits=self.predictor, 
-                    labels=self.y_input),
+                    labels=self.y_hot),
                     name='loss')
             self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
 
@@ -178,7 +194,7 @@ class RnnClassifier(Model[str]):
         with tf.name_scope('evaluation'):
             correct_prediction = tf.equal(
                     tf.argmax(self.predictor, 1), 
-                    tf.argmax(self.y_input, 1))
+                    tf.argmax(self.y_hot, 1))
             accuracy = tf.reduce_mean(
                     tf.cast(correct_prediction, tf.float32),
                     name='accuracy')
@@ -186,7 +202,7 @@ class RnnClassifier(Model[str]):
 
             tf.summary.scalar('batch-accuracy', accuracy)
 
-    def _make_bidirectional_rnn(self, word_vectors):
+    def _make_bidirectional_rnn(self, word_vectors: Any) -> Any:
         with tf.name_scope('bidirectional_rnn'):
             # Convert shape of [?, paragraph_size, embedding_size] into
             # a list of [?, embedding_size]
@@ -213,7 +229,7 @@ class RnnClassifier(Model[str]):
             prediction = tf.matmul(outputs[-1], output_weight) + output_bias
             return prediction
 
-    def train(self, xs: List[str], ys: List[List[bool]]) -> None:
+    def train(self, xs: List[str], ys: List[int]) -> None:
         '''Trains the model. The expectation is that this method is called
         exactly once.'''
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.paragraph_size) for x in xs]
@@ -231,7 +247,7 @@ class RnnClassifier(Model[str]):
     def train_epoch(self, iteration: int,
                           n_batches: int, 
                           xs: List[List[int]], 
-                          ys: List[List[bool]]) -> None:
+                          ys: List[int]) -> None:
         # Train on dataset
         for batch_num in range(n_batches):
             start_idx = batch_num * self.batch_size
@@ -252,52 +268,25 @@ class RnnClassifier(Model[str]):
         self.logger.add_summary(summary_data, iteration)
         print("Iteration {}, batch loss = {:.6f}".format(iteration, batch_loss))
 
-    def predict(self, xs: List[str]) -> List[List[bool]]:
+    def predict(self, xs: List[str]) -> List[int]:
+        assert self.vocab_map is not None
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.paragraph_size) for x in xs]
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
         batch_data = {self.x_input: x_final}
-        return self.session.run(self.output, feed_dict=batch_data)
+        return cast(List[int], self.session.run(self.output, feed_dict=batch_data))
 
 
-def make_bidirectional_rnn(x_data, n_words, n_hidden_layers, n_classes):
-    with tf.name_scope('bidirectional_rnn'):
-        # Convert shape of [?, paragraph_size, embedding_size] into
-        # a list of [?, embedding_size]
-        x_unstacked = tf.unstack(x_data, n_words, 1)
-
-        output_weight = tf.Variable(
-                tf.random_normal([2 * n_hidden_layers, n_classes]),
-                name='output_weight')
-        output_bias = tf.Variable(
-                tf.random_normal([n_classes]),
-                name='output_bias')
-
-        # Defining the bidirectional rnn
-        forwards_lstm = tf.contrib.rnn.BasicLSTMCell(n_hidden_layers)
-        backwards_lstm = tf.contrib.rnn.BasicLSTMCell(n_hidden_layers)
-
-        outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
-                forwards_lstm,
-                backwards_lstm,
-                x_unstacked,
-                dtype=tf.float32)
-
-        # Use the output of the last rnn cell for classification
-        prediction = tf.matmul(outputs[-1], output_weight) + output_bias
-        return prediction
-
-
-def extract_data(comments: List[Comment]) -> Tuple[List[str], List[List[bool]]]:
+def extract_data(comments: List[Comment]) -> Tuple[List[str], List[int]]:
     x_values = []
     y_values = []
     for comment in comments:
         x_values.append(comment.comment)
         cls = IS_ATTACK if comment.average.attack > 0.5 else IS_OK
-        y_values.append([cls == IS_OK, cls == IS_ATTACK])
+        y_values.append(cls)
     return x_values, y_values
 
 
-def main2() -> None:
+def main() -> None:
     print("Starting...")
 
     # Meta parameters
@@ -305,8 +294,7 @@ def main2() -> None:
 
     # Classifier setup
     print("Building model...")
-    classifier = RnnClassifier(n_classes=3)
-    classifier.build_model()
+    classifier = RnnClassifier(n_classes=2)
     shutil.rmtree(classifier.log_dir, ignore_errors=True)
 
     # Load data
@@ -321,15 +309,14 @@ def main2() -> None:
 
     # Evaluation
     print("Evaluation...")
-    y_true = np.argmax(np.asarray(y_dev), 1)
     y_predicted = classifier.predict(x_dev_raw)
-    metrics = ClassificationMetrics(y_true, y_predicted)
+    metrics = ClassificationMetrics(y_dev, y_predicted)
 
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
 
 if __name__ == '__main__':
-    main2()
+    main()
 
 
