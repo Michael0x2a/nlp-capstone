@@ -2,6 +2,8 @@
 Contains a variety of utility functions used for manipulating files.
 '''
 
+from typing import cast
+
 import os
 import os.path
 import json
@@ -19,10 +21,10 @@ def write_nice_json(chunk: JsonDict, path: str) -> None:
 
 def load_json(path: str) -> JsonDict:
     with open(path, 'r') as stream:
-        return json.load(stream)
+        return cast(JsonDict, json.load(stream))
 
 def ensure_folder_exists(path: str) -> None:
-    os.makedirs(path, exists_ok=True)
+    os.makedirs(path, exist_ok=True)
 
 def delete_folder(path: str) -> None:
     shutil.rmtree(path, ignore_errors=True)

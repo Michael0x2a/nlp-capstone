@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-import statistics
+import statistics  # type: ignore
 
 RevId = int
 WorkerId = int

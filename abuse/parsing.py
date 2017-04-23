@@ -17,9 +17,9 @@ need to be refactored later.
 from typing import List, Tuple, Any
 import os.path
 import json
-import statistics
+import statistics  # type: ignore
 
-import pandas as pd
+import pandas as pd  # type: ignore
 
 from custom_types import *
 
@@ -27,7 +27,7 @@ def load_from_json(path: str) -> List[Comment]:
     with open(path, 'r') as stream:
         return [Comment.from_json(c) for c in json.load(stream)]
 
-def save_as_json(path: str, comments: List[Comment]):
+def save_as_json(path: str, comments: List[Comment]) -> None:
     blob = [c.to_json() for c in comments]
     with open(path, 'w') as stream:
         json.dump(blob, stream)
@@ -48,7 +48,7 @@ def load_raw_data(folder_path: str = 'data/wikipedia-detox-data-v6') -> Tuple[Tr
     comments['comment'] = comments['comment'].apply(lambda x: x.replace("NEWLINE_TOKEN", " ").replace("TAB_TOKEN", " "))
     pre_group = annotations.groupby('rev_id')
 
-    def extract(split) -> List[Comment]:
+    def extract(split: str) -> List[Comment]:
         rows = comments[comments['split'] == split]
         out = []
         for row in rows.itertuples():
