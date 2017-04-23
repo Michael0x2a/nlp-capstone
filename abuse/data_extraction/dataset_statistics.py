@@ -1,9 +1,9 @@
 from custom_types import *
-from parsing import load_raw_data
+from data_extraction.wikipedia import *
 import nltk
 import statistics
 
-def analyze_aspect(title: str, dataset: List[Comment]) -> None:
+def analyze_aspect(title: str, dataset: AttackData) -> None:
     attack = []
     ok = []
     para_lengths = []
@@ -29,7 +29,7 @@ def analyze_aspect(title: str, dataset: List[Comment]) -> None:
 
 
 
-def analyze(title: str, train: List[Comment], dev: List[Comment], test: List[Comment]) -> None:
+def analyze(title: str, train: AttackData, dev: AttackData, test: AttackData) -> None:
     print(title)
     analyze_aspect('train', train)
     analyze_aspect('dev', dev)
@@ -38,11 +38,11 @@ def analyze(title: str, train: List[Comment], dev: List[Comment], test: List[Com
 
 
 def main() -> None:
-    train, dev, test = load_raw_data('data/wikipedia-detox-data-v6')
+    train, dev, test = load_attack_data()
     analyze("FULL", train, dev, test)
     print()
 
-    train, dev, test = load_raw_data('data/wikipedia-detox-data-v6-small')
+    train, dev, test = load_attack_data(small=True) 
     analyze("SMALL", train, dev, test)
 
 if __name__ == '__main__':
