@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional, Dict, cast
+from typing import List, Tuple, Optional, Dict, cast, Any
 import os.path
 import shutil
 import json
@@ -284,7 +284,8 @@ class RnnClassifier(Model[str]):
 
     def train(self, xs: List[str], ys: List[int], 
                     test_xs: Optional[List[int]] = None,
-                    test_ys: Optional[List[int]] = None) -> None:
+                    test_ys: Optional[List[int]] = None,
+                    **params: Any) -> None:
         '''Trains the model. The expectation is that this method is called
         exactly once. If the test_xs and test_ys is provided, the train method
         will evaluate those datasets after each epoch completes.'''
@@ -307,7 +308,7 @@ class RnnClassifier(Model[str]):
 
             if test_xs is not None and test_ys is not None:
                 test_ys_predicted = self.session.run(self.output, feed_dict=test_batch_data)
-                metrics = ClassificationMetrics(test_ys, test_predicted_ys)
+                metrics = ClassificationMetrics(test_ys, test_ys_predicted)
                 print(metrics.to_table_row())
 
 
