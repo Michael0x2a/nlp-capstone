@@ -91,6 +91,8 @@ class RnnClassifier(Model[str]):
                        vocab_size: int = 141000,
                        embedding_size: int = 32,
                        n_classes: int = 2,
+                       input_keep_prob: float = 1.0,
+                       output_keep_prob: float = 1.0,
                        log_dir: str = fmanip.join('logs', 'rnn')) -> None:
         self.log_dir = log_dir
         fmanip.delete_folder(log_dir)
@@ -103,6 +105,8 @@ class RnnClassifier(Model[str]):
         self.vocab_size = vocab_size
         self.embedding_size = embedding_size
         self.n_classes = n_classes
+        self.input_keep_prob = input_keep_prob
+        self.output_keep_prob = output_keep_prob
 
         # Particular tensorflow nodes worth keeping a reference to
         # Types are set to Any because mypy doesn't yet understand
@@ -111,6 +115,8 @@ class RnnClassifier(Model[str]):
         self.y_input = None     # type: Any
         self.x_lengths = None   # type: Any
         self.y_hot = None       # type: Any
+        self.input_keep = None  # type: Any
+        self.output_keep = None # type: Any
         self.predictor = None   # type: Any
         self.loss = None        # type: Any
         self.optimizer = None   # type: Any
@@ -133,6 +139,8 @@ class RnnClassifier(Model[str]):
         assert self.y_input is not None
         assert self.x_lengths is not None
         assert self.y_hot is not None
+        assert self.input_keep is not None
+        assert self.output_keep is not None
         assert self.predictor is not None
         assert self.loss is not None
         assert self.optimizer is not None
@@ -153,6 +161,8 @@ class RnnClassifier(Model[str]):
                 'embedding_size': self.embedding_size,
                 'n_classes': self.n_classes,
                 'log_dir': self.log_dir,
+                'input_keep_prob': self.input_keep_prob,
+                'output_keep_prob': self.output_keep_prob,
         }
 
     def _save_model(self, path: str) -> None:
@@ -164,6 +174,8 @@ class RnnClassifier(Model[str]):
         tf.add_to_collection('y_input', self.y_input)
         tf.add_to_collection('x_lengths', self.x_lengths)
         tf.add_to_collection('y_hot', self.y_hot)
+        tf.add_to_collection('input_keep', self.input_keep)
+        tf.add_to_collection('output_keep', self.output_keep)
         tf.add_to_collection('predictor', self.predictor)
         tf.add_to_collection('loss', self.loss)
         tf.add_to_collection('optimizer', self.optimizer)
@@ -187,6 +199,8 @@ class RnnClassifier(Model[str]):
         self.y_input = tf.get_collection('y_input')[0]
         self.x_lengths = tf.get_collection('x_lengths')[0]
         self.y_hot = tf.get_collection('y_hot')[0]
+        self.input_keep = tf.get_collection('input_keep')[0]
+        self.output_keep = tf.get_collection('output_keep')[0]
         self.predictor = tf.get_collection('predictor')[0]
         self.loss = tf.get_collection('loss')[0]
         self.optimizer = tf.get_collection('optimizer')[0]
@@ -217,23 +231,31 @@ class RnnClassifier(Model[str]):
     def _build_input(self) -> None:
         with tf.name_scope('inputs'):
             self.x_input = tf.placeholder(
-                    tf.int32, 
+                    tf.int64, 
                     shape=(None, self.comment_size),
                     name='x_input')
             self.y_input = tf.placeholder(
-                    tf.int32,
+                    tf.int64,
                     shape=(None,),
                     name='y_input')
             self.x_lengths = tf.placeholder(
-                    tf.int32,
+                    tf.int64,
                     shape=(None,),
                     name='x_lengths')
+            self.input_keep = tf.placeholder(
+                    tf.float64,
+                    shape=tuple(),
+                    name='input_keep')
+            self.output_keep = tf.placeholder(
+                    tf.float64,
+                    shape=tuple(),
+                    name='output_keep')
             self.y_hot = tf.one_hot(
                     self.y_input,
                     depth=self.n_classes,
-                    on_value=1.0,
-                    off_value=0.0,
-                    dtype=tf.float32,
+                    on_value=tf.constant(1.0, dtype=tf.float64),
+                    off_value=tf.constant(0.0, dtype=tf.float64),
+                    dtype=tf.float64,
                     name='y_hot_encoded')
             print('y_hot_shape', self.y_hot.shape)
 
@@ -242,7 +264,8 @@ class RnnClassifier(Model[str]):
             # Make embedding vector for words
             # Shape is [?, vocab_size, embedding_size]
             embedding = tf.Variable(
-                    tf.random_uniform([self.vocab_size, self.embedding_size], -1.0, 1.0),
+                    tf.random_uniform([self.vocab_size, self.embedding_size], -1.0, 1.0, dtype=tf.float64),
+                    dtype=tf.float64,
                     name="embedding")
             word_vectors = tf.nn.embedding_lookup(embedding, self.x_input)
 
@@ -261,7 +284,7 @@ class RnnClassifier(Model[str]):
                     tf.argmax(self.predictor, 1), 
                     tf.argmax(self.y_hot, 1))
             accuracy = tf.reduce_mean(
-                    tf.cast(correct_prediction, tf.float32),
+                    tf.cast(correct_prediction, tf.float64),
                     name='accuracy')
             self.output = tf.argmax(self.predictor, 1, name='output')
             self.output_prob = tf.nn.softmax(self.predictor, name='output_prob')
@@ -273,37 +296,60 @@ class RnnClassifier(Model[str]):
             # Convert shape of [?, comment_size, embedding_size] into
             # a list of [?, embedding_size]
             x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
-
             output_weight = tf.Variable(
-                    tf.random_normal([2 * self.n_hidden_layers, self.n_classes]),
+                    tf.random_normal([self.n_hidden_layers, self.n_classes], dtype=tf.float64),
+                    dtype=tf.float64,
                     name='output_weight')
             output_bias = tf.Variable(
-                    tf.random_normal([self.n_classes]),
+                    tf.random_normal([self.n_classes], dtype=tf.float64),
+                    dtype=tf.float64,
                     name='output_bias')
 
+
             # Defining the bidirectional rnn
-            forwards_lstm = tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers)
-            backwards_lstm = tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers)
+            layer = x_unstacked
+            for i in range(1):
+                with tf.name_scope('layer_{}'.format(i)):
+                    forwards_cell = tf.contrib.rnn.DropoutWrapper(
+                            tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers),
+                            input_keep_prob=self.input_keep,
+                            output_keep_prob=self.output_keep)
+                    backwards_cell = tf.contrib.rnn.DropoutWrapper(
+                            tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers),
+                            input_keep_prob=self.input_keep,
+                            output_keep_prob=self.output_keep)
+                    #forwards_cell = tf.contrib.rnn.GRUCell(self.n_hidden_layers)
+                    #backwards_cell = tf.contrib.rnn.GRUCell(self.n_hidden_layers)
 
-            print('x_lengths', self.x_lengths.shape)
-            print('word vectors', word_vectors.shape)
-            outputs, _ = tf.nn.bidirectional_dynamic_rnn(
-                    forwards_lstm,
-                    backwards_lstm,
-                    #x_unstacked,
-                    inputs=word_vectors,
-                    sequence_length=self.x_lengths,
-                    dtype=tf.float32)
+                    '''
+                    outputs, _ = tf.nn.bidirectional_dynamic_rnn(
+                            forwards_cell,
+                            backwards_cell,
+                            #x_unstacked,
+                            inputs=word_vectors,
+                            sequence_length=self.x_lengths,
+                            dtype=tf.float64)
+                    
+                    # Need to connect outputs
+                    outputs = tf.concat(outputs, 2)
+                    last_output = outputs[:,0,:]
+
+                    # Use the output of the last rnn cell for classification
+                    prediction = tf.matmul(last_output, output_weight) + output_bias
+                    '''
+
+                    outputs, _ = tf.contrib.rnn.static_rnn(
+                            forwards_cell,
+                            #backwards_cell,
+                            layer,
+                            dtype=tf.float64,
+                            scope='bidirectional_rnn_{}'.format(i))
+                    layer = outputs
+
+            # This is an abuse of scope, but whatever.
             
-            # Need to connect outputs
-            print(outputs)
-            outputs = tf.concat(outputs, 2)
-            print('outputs', outputs.shape)
-            last_output = outputs[:,0,:]
-
             # Use the output of the last rnn cell for classification
-            #prediction = tf.matmul(outputs[-1], output_weight) + output_bias
-            prediction = tf.matmul(last_output, output_weight) + output_bias
+            prediction = tf.matmul(outputs[-1], output_weight) + output_bias
             return prediction
 
     def train(self, xs: List[str], ys: List[int], **params: Any) -> None:
@@ -345,6 +391,8 @@ class RnnClassifier(Model[str]):
                     self.x_lengths: x_len_batch, 
                     self.x_input: x_batch, 
                     self.y_input: y_batch,
+                    self.input_keep: self.input_keep_prob,
+                    self.output_keep: self.output_keep_prob,
             }
 
             self.session.run(self.optimizer, feed_dict=batch_data)
@@ -363,6 +411,11 @@ class RnnClassifier(Model[str]):
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
         x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
-        batch_data = {self.x_input: x_final, self.x_lengths: x_lengths}
+        batch_data = {
+                self.x_input: x_final, 
+                self.x_lengths: x_lengths,
+                self.input_keep: 1.0,
+                self.output_keep: 1.0,
+        }
         return cast(List[List[float]], self.session.run(self.output_prob, feed_dict=batch_data))
 
