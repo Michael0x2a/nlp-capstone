@@ -13,6 +13,7 @@ import numpy as np  # type: ignore
 from data_extraction.wikipedia import *
 from models.bag_of_words import BagOfWordsClassifier
 from models.rnn_classifier import RnnClassifier
+from models.rnn_char_classifier import RnnCharClassifier
 from models.model import Model, BinaryClassificationMetrics
 import utils.file_manip as fmanip
 
@@ -84,6 +85,7 @@ def main() -> None:
     models = {
             'bag_of_words': BagOfWordsClassifier,
             'rnn': RnnClassifier,
+            'rnn_char': RnnCharClassifier,
     }  # type: Dict[str, Type[Model]]
 
     # Extracting and verifying command line args
