@@ -64,9 +64,12 @@ class Model(Generic[TInput]):
         provided path.'''
         raise NotImplementedError()
 
-    def train(self, xs: List[TInput], ys: List[int]) -> None:
+    def train(self, xs: List[TInput], ys: List[int], **params: Any) -> None:
         '''Trains the model. The expectation is that this method is called
-        exactly once.'''
+        exactly once. The model can also accept additional params to tweak
+        the behavior of the training method in some way. Note that cmd.py
+        will completely ignore the kwargs, so the 'train' method shouldn't
+        rely on any of them being present.'''
         raise NotImplementedError()
 
     def predict(self, xs: List[TInput]) -> List[int]:
