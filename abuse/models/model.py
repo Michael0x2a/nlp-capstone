@@ -2,6 +2,7 @@ from typing import Dict, List, Any, Generic, TypeVar, Iterable, Optional, Tuple
 import os.path
 
 import sklearn.metrics as metrics  # type: ignore
+import scipy.stats as stats
 
 import utils.file_manip as fmanip
 
@@ -16,20 +17,22 @@ class ClassificationMetrics:
         self.recall = metrics.recall_score(y_expected, y_predicted)
         self.f1 = metrics.f1_score(y_expected, y_predicted)
         self.roc_auc = metrics.roc_auc_score(y_expected, y_predicted)
+        self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
 
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
 
     def to_table_row(self) -> str:
-        return "| {:.6f} | {:.6f} | {:.6f} | {:.6f} | {:.6f} |".format(
+        return "| {:.6f} | {:.6f} | {:.6f} | {:.6f} | {:.6f} | {:.6f} |".format(
                 self.accuracy,
                 self.precision,
                 self.recall,
                 self.f1,
-                self.roc_auc)
+                self.roc_auc,
+                self.spearman)
 
     def get_header(self) -> str:
-        return ("| Accuracy | Precision | Recall | F1 | ROC |\n" +
-                "| -------- | --------- | ------ | -- | --- |")
+        return ("| Accuracy | Precision | Recall | F1 | ROC | Spearman |\n" +
+                "| -------- | --------- | ------ | -- | --- | -------- |")
 
 
 class Model(Generic[TInput]):
