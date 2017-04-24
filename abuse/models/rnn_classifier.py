@@ -2,6 +2,7 @@ from typing import List, Tuple, Optional, Dict, cast
 import os.path
 import shutil
 import json
+import time  # type: ignore
 from collections import Counter
 
 import numpy as np  # type: ignore
@@ -82,7 +83,7 @@ class RnnClassifier(Model[str]):
 
     --log_dir [str; default="logs/rnn"]
     '''
-    def __init__(self, restore_from: Optional[str] = None,\
+    def __init__(self, restore_from: Optional[str] = None,
                        comment_size: int = 100,
                        batch_size: int = 125,
                        epoch_size: int = 10,
@@ -91,6 +92,9 @@ class RnnClassifier(Model[str]):
                        embedding_size: int = 32,
                        n_classes: int = 2,
                        log_dir: str = fmanip.join('logs', 'rnn')) -> None:
+        self.log_dir = log_dir
+        fmanip.delete_folder(log_dir)
+
         # Hyperparameters
         self.comment_size = comment_size
         self.batch_size = batch_size
@@ -99,9 +103,6 @@ class RnnClassifier(Model[str]):
         self.vocab_size = vocab_size
         self.embedding_size = embedding_size
         self.n_classes = n_classes
-        self.log_dir = log_dir
-
-        fmanip.delete_folder(log_dir)
 
         # Particular tensorflow nodes worth keeping a reference to
         # Types are set to Any because mypy doesn't yet understand
@@ -123,7 +124,7 @@ class RnnClassifier(Model[str]):
         if restore_from is None:
             self._build_model()
         else:
-            raise AssertionError("Restoration functionality not yet implemented")
+            self._restore_model(restore_from)
 
     def _assert_all_setup(self) -> None:
         assert self.x_input is not None
@@ -153,10 +154,41 @@ class RnnClassifier(Model[str]):
     def _save_model(self, path: str) -> None:
         with open(fmanip.join(path, 'vocab_map.json'), 'w') as stream:
             json.dump(self.vocab_map, stream)
+        saver = tf.train.Saver()
+
+        tf.add_to_collection('x_input', self.x_input)
+        tf.add_to_collection('y_input', self.y_input)
+        tf.add_to_collection('y_hot', self.y_hot)
+        tf.add_to_collection('predictor', self.predictor)
+        tf.add_to_collection('loss', self.loss)
+        tf.add_to_collection('optimizer', self.optimizer)
+        tf.add_to_collection('summary', self.summary)
+        tf.add_to_collection('output', self.output)
+        tf.add_to_collection('init', self.init)
+
+        saver.save(self.session, fmanip.join(path, 'model'))
         tf.train.export_meta_graph(filename=fmanip.join(path, 'tensorflow_graph.meta'))
 
     def _restore_model(self, path: str) -> None:
-        raise NotImplementedError()
+        with open(fmanip.join(path, 'vocab_map.json'), 'r') as stream:
+            self.vocab_map = json.load(stream)
+
+        self.session = tf.Session()
+        saver = tf.train.import_meta_graph(fmanip.join(path, 'tensorflow_graph.meta'))
+        saver.restore(self.session, fmanip.join(path, 'model'))
+
+        self.x_input = tf.get_collection('x_input')[0]
+        self.y_input = tf.get_collection('y_input')[0]
+        self.y_hot = tf.get_collection('y_hot')[0]
+        self.predictor = tf.get_collection('predictor')[0]
+        self.loss = tf.get_collection('loss')[0]
+        self.optimizer = tf.get_collection('optimizer')[0]
+        self.summary = tf.get_collection('summary')[0]
+        self.output = tf.get_collection('output')[0]
+        self.init = tf.get_collection('init')[0]
+        self.logger = tf.summary.FileWriter(self.log_dir, graph=tf.get_default_graph())
+
+        self._assert_all_setup()
 
     def _build_model(self) -> None:
         '''Builds the model, using the currently set params.'''
@@ -269,6 +301,8 @@ class RnnClassifier(Model[str]):
                           n_batches: int, 
                           xs: List[List[int]], 
                           ys: List[int]) -> None:
+        start = time.time()
+
         # Train on dataset
         for batch_num in range(n_batches):
             start_idx = batch_num * self.batch_size
@@ -287,7 +321,8 @@ class RnnClassifier(Model[str]):
                 feed_dict=batch_data)
 
         self.logger.add_summary(summary_data, iteration)
-        print("Iteration {}, batch loss = {:.6f}".format(iteration, batch_loss))
+        delta = time.time() - start 
+        print("Iteration {}, last batch loss = {:.6f}, time elapsed = {:.3f}".format(iteration, batch_loss, delta))
 
     def predict(self, xs: List[str]) -> List[int]:
         assert self.vocab_map is not None

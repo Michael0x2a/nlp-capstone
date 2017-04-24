@@ -34,7 +34,8 @@ class ClassificationMetrics:
 
 class Model(Generic[TInput]):
     # Core methods that must be implemented
-    def __init__(self, restore_from: Optional[str] = None, **params: Any) -> None:
+    def __init__(self, restore_from: Optional[str] = None, 
+                       **params: Any) -> None:
         '''The constructor is responsible for storing all
         relevant parameters, and building the model. All parameters
         must have a default value, if not specified.

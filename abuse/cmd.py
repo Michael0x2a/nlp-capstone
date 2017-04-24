@@ -4,12 +4,15 @@ munging sys.argv. This is more out of laziness more then
 anything.'''
 
 from typing import Tuple, Dict, Any, Union, List
+if False:  # Hack to support Python 3.5.1
+    from typing import Type
 import sys
 
 from data_extraction.wikipedia import *
 from models.bag_of_words import BagOfWordsClassifier
 from models.rnn_classifier import RnnClassifier
 from models.model import Model, ClassificationMetrics
+import utils.file_manip as fmanip
 
 Primitive = Union[int, float, str, bool]
 Data = Tuple[List[str], List[int]]
@@ -42,7 +45,7 @@ def get_wikipedia_data(category: str = None,
         If true, uses the shorter version of the dataset.
     '''
     funcs = {
-            'personal_attack': load_attack_data,
+            'attack': load_attack_data,
             'toxicity': load_toxicity_data,
             'aggression': load_aggression_data
     }
@@ -79,7 +82,7 @@ def main() -> None:
     models = {
             'bag_of_words': BagOfWordsClassifier,
             'rnn': RnnClassifier,
-    }
+    }  # type: Dict[str, Type[Model]]
 
     # Extracting and verifying command line args
     info = parse_args(sys.argv[1:])
@@ -92,16 +95,33 @@ def main() -> None:
     verify_help(dataset_func, info.dataset_params)
     verify_help(model_class, info.model_params)
 
+    # Extract some metacommands
+    should_reload = 'restore_from' in info.model_params
+    save_path = info.model_params.get('save_to', None)
+    if save_path is not None:
+        del info.model_params['save_to']
     
     # Ok, go
     print("Loading {} data...".format(info.dataset_name))
     (train_x, train_y), (test_x, test_y) = dataset_func(**info.dataset_params)  # type: ignore
 
-    print("Building {} model...".format(info.model_name))
-    classifier = model_class(**info.model_params)  # type: ignore
+    if should_reload:
+        restore_path = info.model_params['restore_from']
+        assert isinstance(restore_path, str)
+        print("Loading saved model from {}...".format(restore_path))
+        classifier = model_class.restore_from_saved(restore_path)
+    else:
+        print("Building {} model...".format(info.model_name))
+        classifier = model_class(**info.model_params)  # type: ignore
 
-    print("Training...")
-    classifier.train(train_x, train_y)
+        print("Training...")
+        classifier.train(train_x, train_y)
+
+    if save_path is not None:
+        assert isinstance(save_path, str)
+        print("Saving model to {}...".format(save_path))
+        fmanip.ensure_folder_exists(save_path)
+        classifier.save(save_path)
 
     print("Evaluating full training set...")
     train_predicted_y = classifier.predict(train_x)

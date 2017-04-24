@@ -19,7 +19,7 @@ def join(*path_fragments: str) -> str:
 
 def write_nice_json(chunk: JsonDict, path: str) -> None:
     with open(path, 'w') as stream:
-        json.dump(chunk, stream, indent=4, sort_key=True)
+        json.dump(chunk, stream, indent=4, sort_keys=True)
 
 def load_json(path: str) -> JsonDict:
     with open(path, 'r') as stream:
