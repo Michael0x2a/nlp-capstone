@@ -8,10 +8,12 @@ if False:  # Hack to support Python 3.5.1
     from typing import Type
 import sys
 
+import numpy as np  # type: ignore
+
 from data_extraction.wikipedia import *
 from models.bag_of_words import BagOfWordsClassifier
 from models.rnn_classifier import RnnClassifier
-from models.model import Model, ClassificationMetrics
+from models.model import Model, BinaryClassificationMetrics
 import utils.file_manip as fmanip
 
 Primitive = Union[int, float, str, bool]
@@ -117,6 +119,9 @@ def main() -> None:
         print("Training...")
         classifier.train(train_x, train_y)
 
+    # Hint for mypy
+    assert isinstance(classifier, Model)
+
     if save_path is not None:
         assert isinstance(save_path, str)
         print("Saving model to {}...".format(save_path))
@@ -125,9 +130,10 @@ def main() -> None:
 
     print("Evaluating full training set...")
     train_predicted_y = classifier.predict(train_x)
+    print(train_predicted_y)
 
     print("Training set results:")
-    metrics = ClassificationMetrics(train_y, train_predicted_y)
+    metrics = BinaryClassificationMetrics(train_y, np.argmax(train_predicted_y, 1))
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
@@ -137,7 +143,7 @@ def main() -> None:
     test_predicted_y = classifier.predict(test_x)
 
     print("Dev/test set results:")
-    metrics = ClassificationMetrics(test_y, test_predicted_y)
+    metrics = BinaryClassificationMetrics(test_y, np.argmax(test_predicted_y, 1))
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)

@@ -2,14 +2,15 @@ from typing import Dict, List, Any, Generic, TypeVar, Iterable, Optional, Tuple
 import os.path
 
 import sklearn.metrics as metrics  # type: ignore
-import scipy.stats as stats
+import scipy.stats as stats  # type: ignore
+import numpy as np  # type: ignore
 
 import utils.file_manip as fmanip
 
 TSelf = TypeVar('TSelf', bound='Model')
 TInput = TypeVar('TInput')
 
-class ClassificationMetrics:
+class BinaryClassificationMetrics:
     def __init__(self, y_expected: List[int], 
                        y_predicted: List[int]) -> None:
         self.accuracy = metrics.accuracy_score(y_expected, y_predicted)
@@ -18,7 +19,6 @@ class ClassificationMetrics:
         self.f1 = metrics.f1_score(y_expected, y_predicted)
         self.roc_auc = metrics.roc_auc_score(y_expected, y_predicted)
         self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
-
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
 
     def to_table_row(self) -> str:
@@ -75,11 +75,11 @@ class Model(Generic[TInput]):
         rely on any of them being present.'''
         raise NotImplementedError()
 
-    def predict(self, xs: List[TInput]) -> List[int]:
+    def predict(self, xs: List[TInput]) -> List[List[float]]:
         raise NotImplementedError()
 
     # Useful utility methods
-    def predict_single(self, x: TInput) -> int:
+    def predict_single(self, x: TInput) -> List[float]:
         return self.predict([x])[0]
 
     @classmethod

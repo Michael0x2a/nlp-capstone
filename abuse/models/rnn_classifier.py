@@ -14,7 +14,7 @@ import utils.file_manip as fmanip
 from data_extraction.wikipedia import * 
 from custom_types import *
 
-from models.model import Model, ClassificationMetrics
+from models.model import Model
 
 
 print("Done loading imports")
@@ -115,6 +115,7 @@ class RnnClassifier(Model[str]):
         self.optimizer = None   # type: Any
         self.summary = None     # type: Any
         self.output = None      # type: Any
+        self.output_prob = None # type: Any
         self.init = None        # type: Any
         self.logger = None      # type: Any
         self.session = None     # type: Any
@@ -135,6 +136,7 @@ class RnnClassifier(Model[str]):
         assert self.optimizer is not None
         assert self.summary is not None
         assert self.output is not None
+        assert self.output_prob is not None
         assert self.init is not None
         assert self.logger is not None
         assert self.session is not None
@@ -164,6 +166,7 @@ class RnnClassifier(Model[str]):
         tf.add_to_collection('optimizer', self.optimizer)
         tf.add_to_collection('summary', self.summary)
         tf.add_to_collection('output', self.output)
+        tf.add_to_collection('output_prob', self.output_prob)
         tf.add_to_collection('init', self.init)
 
         saver.save(self.session, fmanip.join(path, 'model'))
@@ -185,6 +188,7 @@ class RnnClassifier(Model[str]):
         self.optimizer = tf.get_collection('optimizer')[0]
         self.summary = tf.get_collection('summary')[0]
         self.output = tf.get_collection('output')[0]
+        self.output_prob = tf.get_collection('output_prob')[0]
         self.init = tf.get_collection('init')[0]
         self.logger = tf.summary.FileWriter(self.log_dir, graph=tf.get_default_graph())
 
@@ -251,7 +255,8 @@ class RnnClassifier(Model[str]):
             accuracy = tf.reduce_mean(
                     tf.cast(correct_prediction, tf.float32),
                     name='accuracy')
-            self.output = tf.argmax(self.predictor, 1)
+            self.output = tf.argmax(self.predictor, 1, name='output')
+            self.output_prob = tf.nn.softmax(self.predictor, name='output_prob')
 
             tf.summary.scalar('batch-accuracy', accuracy)
 
@@ -282,9 +287,12 @@ class RnnClassifier(Model[str]):
             prediction = tf.matmul(outputs[-1], output_weight) + output_bias
             return prediction
 
-    def train(self, xs: List[str], ys: List[int]) -> None:
+    def train(self, xs: List[str], ys: List[int], **params: Any) -> None:
         '''Trains the model. The expectation is that this method is called
         exactly once.'''
+        if len(params) != 0:
+            raise Exception("RNN does not take in any extra params to train")
+
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
         self.vocab_map = make_vocab_mapping(x_data_raw, self.vocab_size)
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
@@ -324,55 +332,10 @@ class RnnClassifier(Model[str]):
         delta = time.time() - start 
         print("Iteration {}, last batch loss = {:.6f}, time elapsed = {:.3f}".format(iteration, batch_loss, delta))
 
-    def predict(self, xs: List[str]) -> List[int]:
+    def predict(self, xs: List[str]) -> List[List[float]]:
         assert self.vocab_map is not None
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
         batch_data = {self.x_input: x_final}
-        return cast(List[int], self.session.run(self.output, feed_dict=batch_data))
-
-
-def extract_data(comments: AttackData) -> Tuple[List[str], List[int]]:
-    x_values = []
-    y_values = []
-    for comment in comments:
-        x_values.append(comment.comment)
-        cls = IS_ATTACK if comment.average.attack > 0.5 else IS_OK
-        y_values.append(cls)
-    return x_values, y_values
-
-
-def main() -> None:
-    print("Starting...")
-
-    # Meta parameters
-    data_src_path = 'data/wikipedia-detox-data-v6'
-
-    # Classifier setup
-    print("Building model...")
-    classifier = RnnClassifier(n_classes=2)
-    shutil.rmtree(classifier.log_dir, ignore_errors=True)
-
-    # Load data
-    print("Loading data...")
-    train_data, dev_data, test_data = load_attack_data(data_src_path)
-    x_train_raw, y_train = extract_data(train_data)
-    x_dev_raw, y_dev = extract_data(dev_data)
-
-    # Begin training
-    print("Training...")
-    classifier.train(x_train_raw, y_train)
-
-    # Evaluation
-    print("Evaluation...")
-    y_predicted = classifier.predict(x_dev_raw)
-    metrics = ClassificationMetrics(y_dev, y_predicted)
-
-    print(metrics.get_header())
-    print(metrics.to_table_row())
-    print(metrics.confusion_matrix)
-
-if __name__ == '__main__':
-    main()
-
+        return cast(List[List[float]], self.session.run(self.output_prob, feed_dict=batch_data))
 
