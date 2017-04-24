@@ -3,13 +3,14 @@ from typing import Optional, Dict, Tuple, cast
 from sklearn.pipeline import Pipeline  # type: ignore
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
+from sklearn.externals import joblib
 import sklearn.metrics  # type: ignore
 import numpy as np  # type: ignore
 
 from custom_types import *
 from data_extraction.wikipedia import *
 from models.model import Model, ClassificationMetrics
-
+import utils.file_manip as fmanip
 
 
 class BagOfWordsClassifier(Model[str]):
@@ -33,13 +34,16 @@ class BagOfWordsClassifier(Model[str]):
         self.ngram_range_hi = ngram_range_hi
         self.norm = norm
 
-        self.classifier = Pipeline([
-            ('vect', CountVectorizer(
-                        max_features=10000, 
-                        ngram_range=(self.ngram_range_lo, self.ngram_range_hi))),
-            ('tfidf', TfidfTransformer(norm='l2')),
-            ('clf', LogisticRegression())
-        ])
+        if restore_from is None:
+            self.classifier = Pipeline([
+                ('vect', CountVectorizer(
+                            max_features=10000, 
+                            ngram_range=(self.ngram_range_lo, self.ngram_range_hi))),
+                ('tfidf', TfidfTransformer(norm='l2')),
+                ('clf', LogisticRegression())
+            ])
+        else:
+            self.classifier = joblib.load(fmanip.join(restore_from, 'classifier.pkl'))
 
     def get_parameters(self) -> Dict[str, Any]:
         return {
@@ -50,7 +54,14 @@ class BagOfWordsClassifier(Model[str]):
         }
 
     def _save_model(self, path: str) -> None:
-        raise NotImplementedError()
+        # lol, apparently pickling is the recommended way of saving/loading
+        # trained classifiers. See 
+        # http://scikit-learn.org/stable/modules/model_persistence.html
+        #
+        # The pickled output is relatively fragile, and could break on
+        # different operating systems/different version of python/different
+        # versions of basically any library we're using.
+        joblib.dump(self.classifier, fmanip.join(path, 'classifier.pkl'))
 
     def train(self, xs: List[str], ys: List[int]) -> None:
         '''Trains the model. The expectation is that this method is called
