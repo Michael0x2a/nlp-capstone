@@ -282,12 +282,20 @@ class RnnClassifier(Model[str]):
             prediction = tf.matmul(outputs[-1], output_weight) + output_bias
             return prediction
 
-    def train(self, xs: List[str], ys: List[int]) -> None:
+    def train(self, xs: List[str], ys: List[int], 
+                    test_xs: Optional[List[int]] = None,
+                    test_ys: Optional[List[int]] = None) -> None:
         '''Trains the model. The expectation is that this method is called
-        exactly once.'''
+        exactly once. If the test_xs and test_ys is provided, the train method
+        will evaluate those datasets after each epoch completes.'''
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
         self.vocab_map = make_vocab_mapping(x_data_raw, self.vocab_size)
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
+
+        if test_xs is not None:
+            test_x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in test_xs]
+            test_x_final = [vectorize_paragraph(self.vocab_map, para) for para in test_x_data_raw]
+            test_batch_data = {self.x_input: test_x_final}
 
         n_batches = len(x_final) // self.batch_size
 
@@ -296,6 +304,12 @@ class RnnClassifier(Model[str]):
         self.session.run(self.init)
         for i in range(self.epoch_size):
             self.train_epoch(i, n_batches, x_final, ys)
+
+            if test_xs is not None and test_ys is not None:
+                test_ys_predicted = self.session.run(self.output, feed_dict=test_batch_data)
+                metrics = ClassificationMetrics(test_ys, test_predicted_ys)
+                print(metrics.to_table_row())
+
 
     def train_epoch(self, iteration: int,
                           n_batches: int, 

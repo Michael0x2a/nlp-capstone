@@ -115,7 +115,7 @@ def main() -> None:
         classifier = model_class(**info.model_params)  # type: ignore
 
         print("Training...")
-        classifier.train(train_x, train_y)
+        classifier.train(train_x, train_y, test_x, test_y)
 
     if save_path is not None:
         assert isinstance(save_path, str)
