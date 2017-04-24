@@ -109,6 +109,7 @@ class RnnClassifier(Model[str]):
         # the tensorflow library
         self.x_input = None     # type: Any
         self.y_input = None     # type: Any
+        self.x_lengths = None   # type: Any
         self.y_hot = None       # type: Any
         self.predictor = None   # type: Any
         self.loss = None        # type: Any
@@ -130,6 +131,7 @@ class RnnClassifier(Model[str]):
     def _assert_all_setup(self) -> None:
         assert self.x_input is not None
         assert self.y_input is not None
+        assert self.x_lengths is not None
         assert self.y_hot is not None
         assert self.predictor is not None
         assert self.loss is not None
@@ -160,6 +162,7 @@ class RnnClassifier(Model[str]):
 
         tf.add_to_collection('x_input', self.x_input)
         tf.add_to_collection('y_input', self.y_input)
+        tf.add_to_collection('x_lengths', self.x_lengths)
         tf.add_to_collection('y_hot', self.y_hot)
         tf.add_to_collection('predictor', self.predictor)
         tf.add_to_collection('loss', self.loss)
@@ -182,6 +185,7 @@ class RnnClassifier(Model[str]):
 
         self.x_input = tf.get_collection('x_input')[0]
         self.y_input = tf.get_collection('y_input')[0]
+        self.x_lengths = tf.get_collection('x_lengths')[0]
         self.y_hot = tf.get_collection('y_hot')[0]
         self.predictor = tf.get_collection('predictor')[0]
         self.loss = tf.get_collection('loss')[0]
@@ -220,6 +224,10 @@ class RnnClassifier(Model[str]):
                     tf.int32,
                     shape=(None,),
                     name='y_input')
+            self.x_lengths = tf.placeholder(
+                    tf.int32,
+                    shape=(None,),
+                    name='x_lengths')
             self.y_hot = tf.one_hot(
                     self.y_input,
                     depth=self.n_classes,
@@ -277,14 +285,25 @@ class RnnClassifier(Model[str]):
             forwards_lstm = tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers)
             backwards_lstm = tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers)
 
-            outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
+            print('x_lengths', self.x_lengths.shape)
+            print('word vectors', word_vectors.shape)
+            outputs, _ = tf.nn.bidirectional_dynamic_rnn(
                     forwards_lstm,
                     backwards_lstm,
-                    x_unstacked,
+                    #x_unstacked,
+                    inputs=word_vectors,
+                    sequence_length=self.x_lengths,
                     dtype=tf.float32)
+            
+            # Need to connect outputs
+            print(outputs)
+            outputs = tf.concat(outputs, 2)
+            print('outputs', outputs.shape)
+            last_output = outputs[:,0,:]
 
             # Use the output of the last rnn cell for classification
-            prediction = tf.matmul(outputs[-1], output_weight) + output_bias
+            #prediction = tf.matmul(outputs[-1], output_weight) + output_bias
+            prediction = tf.matmul(last_output, output_weight) + output_bias
             return prediction
 
     def train(self, xs: List[str], ys: List[int], **params: Any) -> None:
@@ -294,6 +313,7 @@ class RnnClassifier(Model[str]):
             raise Exception("RNN does not take in any extra params to train")
 
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
+        x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
         self.vocab_map = make_vocab_mapping(x_data_raw, self.vocab_size)
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
 
@@ -303,10 +323,11 @@ class RnnClassifier(Model[str]):
 
         self.session.run(self.init)
         for i in range(self.epoch_size):
-            self.train_epoch(i, n_batches, x_final, ys)
+            self.train_epoch(i, n_batches, x_lengths, x_final, ys)
 
     def train_epoch(self, iteration: int,
                           n_batches: int, 
+                          x_lengths: List[int],
                           xs: List[List[int]], 
                           ys: List[int]) -> None:
         start = time.time()
@@ -318,8 +339,13 @@ class RnnClassifier(Model[str]):
 
             x_batch = xs[start_idx: end_idx]
             y_batch = ys[start_idx: end_idx]
+            x_len_batch = x_lengths[start_idx: end_idx]
 
-            batch_data = {self.x_input: x_batch, self.y_input: y_batch}
+            batch_data = {
+                    self.x_lengths: x_len_batch, 
+                    self.x_input: x_batch, 
+                    self.y_input: y_batch,
+            }
 
             self.session.run(self.optimizer, feed_dict=batch_data)
 
@@ -335,7 +361,8 @@ class RnnClassifier(Model[str]):
     def predict(self, xs: List[str]) -> List[List[float]]:
         assert self.vocab_map is not None
         x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
+        x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
-        batch_data = {self.x_input: x_final}
+        batch_data = {self.x_input: x_final, self.x_lengths: x_lengths}
         return cast(List[List[float]], self.session.run(self.output_prob, feed_dict=batch_data))
 
