@@ -29,7 +29,7 @@ class ErrorAnalysis:
                 elif exp < self.threshold and pred > self.threshold:
                     f = fp
                 if f is not None:
-                    f.write("{:.6f} {:.6f} {}\n".format(exp, pred, comment))
+                    f.write("{:.6f} {:.6f} {}\n".format(exp, pred, comment.encode("utf-8")))
 
 def one_hot(y: List[int]) -> List[List[int]]:
     out = []
