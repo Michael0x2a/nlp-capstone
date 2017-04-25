@@ -15,6 +15,7 @@ from models.bag_of_words import BagOfWordsClassifier
 from models.rnn_classifier import RnnClassifier
 from models.rnn_char_classifier import RnnCharClassifier
 from models.logistic_copy import CopiedClassifier
+from models.profanity_filter import ProfanityFilterClassifier
 from models.model import Model, BinaryClassificationMetrics, ErrorAnalysis
 import utils.file_manip as fmanip
 
@@ -82,6 +83,7 @@ def main() -> None:
 
     models = {
             'bag_of_words': BagOfWordsClassifier,
+            'profanity_filter': ProfanityFilter,
             'copy': CopiedClassifier,
             'rnn': RnnClassifier,
             'rnn_char': RnnCharClassifier,

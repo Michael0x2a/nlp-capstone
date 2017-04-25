@@ -21,13 +21,26 @@ class ErrorAnalysis:
 
     def save_errors(self, path: str = "") -> None:
         with open(os.path.join(path, "false_positives.txt"), 'w') as fp, \
-             open(os.path.join(path, "false_negatives.txt"), 'w') as fn:
+             open(os.path.join(path, "false_negatives.txt"), 'w') as fn, \
+             open(os.path.join(path, "true_positives.txt"), 'w') as tp, \
+             open(os.path.join(path, "true_negatives.txt"), 'w') as tn:
             for comment, exp, pred in zip(self.x, self.y_expected, self.y_predicted):
                 f = None
-                if exp > self.threshold and pred < self.threshold:
+                
+                true_bad = exp > self.threshold
+                pred_bad = pred > self.threshold
+
+                if true_bad and not pred_bad:
                     f = fn
-                elif exp < self.threshold and pred > self.threshold:
+                elif not true_bad and pred_bad:
                     f = fp
+                elif true_bad and pred_bad:
+                    f = tp
+                elif not true_bad and not pred_bad:
+                    f = tn
+                else:
+                    raise AssertionError()
+
                 if f is not None:
                     f.write("{:.6f} {:.6f} {}\n".format(exp, pred, comment))
 
