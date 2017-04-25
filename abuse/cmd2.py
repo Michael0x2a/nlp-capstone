@@ -12,6 +12,7 @@ import numpy as np  # type: ignore
 
 from data_extraction.wikipedia import *
 from models.bag_of_words import BagOfWordsClassifier
+from models.logistic_classifier import LogisticClassifier
 from models.rnn_classifier import RnnClassifier
 from models.rnn_char_classifier import RnnCharClassifier
 from models.logistic_copy import CopiedClassifier
@@ -84,6 +85,7 @@ def main() -> None:
     models = {
             'bag_of_words': BagOfWordsClassifier,
             'profanity_filter': ProfanityFilter,
+            'lr': LogisticClassifier,
             'copy': CopiedClassifier,
             'rnn': RnnClassifier,
             'rnn_char': RnnCharClassifier,
