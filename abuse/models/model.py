@@ -19,8 +19,8 @@ class ErrorAnalysis:
         self.threshold = threshold
 
     def save_errors(self, path: str = "") -> None:
-        with open(os.path.join(path, "false_positives.txt") as fp,
-             open(os.path.join(path, "false_negatives.txt") as np:
+        with open(os.path.join(path, "false_positives.txt"), 'w') as fp, \
+             open(os.path.join(path, "false_negatives.txt"), 'w') as fn:
             for comment, exp, pred in zip(self.x, self.y_expected, self.y_predicted):
                 f = None
                 if exp > self.threshold and pred < self.threshold:

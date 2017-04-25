@@ -34,6 +34,10 @@ Label = int
 stop_words = set(nltk.corpus.stopwords.words('english'))
 
 def to_words(inputs: str) -> List[str]:
+    inputs = inputs.replace("=====", "")
+    inputs = inputs.replace("====", "")
+    inputs = inputs.replace("===", "")
+    inputs = inputs.replace("==", "")
     words = nltk.word_tokenize(inputs)
     return [word for word in words if (word not in stop_words)]
 

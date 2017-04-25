@@ -14,7 +14,8 @@ from data_extraction.wikipedia import *
 from models.bag_of_words import BagOfWordsClassifier
 from models.rnn_classifier import RnnClassifier
 from models.rnn_char_classifier import RnnCharClassifier
-from models.model import Model, BinaryClassificationMetrics
+from models.logistic_copy import CopiedClassifier
+from models.model import Model, BinaryClassificationMetrics, ErrorAnalysis
 import utils.file_manip as fmanip
 
 Primitive = Union[int, float, str, bool]
@@ -54,14 +55,15 @@ def get_wikipedia_data_soft(category: str = None,
         attribute = category
     assert attribute is not None
 
-    def extract_data(comments: AttackData) -> Data:
+    def extract_data(comments: AttackData) -> Tuple[List[str], List[float]]:
         x_values = []
         y_values = []
         for comment in comments:
             x_values.append(comment.comment)
-            cls = (comment.average, attribute)  # type: ignore
+            cls = getattr(comment.average, attribute)  # type: ignore
             y_values.append(cls)
         return x_values, y_values
+
     train_data, dev_data, test_data = funcs[category](small=use_small)  # type: ignore
 
     train = extract_data(train_data)
@@ -80,6 +82,7 @@ def main() -> None:
 
     models = {
             'bag_of_words': BagOfWordsClassifier,
+            'copy': CopiedClassifier,
             'rnn': RnnClassifier,
             'rnn_char': RnnCharClassifier,
     }  # type: Dict[str, Type[Model]]
@@ -104,8 +107,8 @@ def main() -> None:
     # Ok, go
     print("Loading {} data...".format(info.dataset_name))
     (train_x, train_y_soft), (test_x, test_y_soft) = dataset_func(**info.dataset_params)  # type: ignore
-    train_y = train_y_soft > 0.5
-    test_y = test_y_soft > 0.5
+    train_y = [int(foo > 0.5) for foo in train_y_soft]
+    test_y = [int(foo > 0.5) for foo in test_y_soft]
 
     if should_reload:
         restore_path = info.model_params['restore_from']
@@ -133,7 +136,7 @@ def main() -> None:
     print(train_predicted_y)
 
     print("Training set results:")
-    metrics = BinaryClassificationMetrics(train_y, np.argmax(train_predicted_y, 1))
+    metrics = BinaryClassificationMetrics(train_y, train_predicted_y)
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
@@ -143,14 +146,14 @@ def main() -> None:
     test_predicted_y = classifier.predict(test_x)
 
     print("Dev/test set results:")
-    metrics = BinaryClassificationMetrics(test_y, np.argmax(test_predicted_y, 1))
+    metrics = BinaryClassificationMetrics(test_y, test_predicted_y)
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
     print()
 
     print("Saving errors...")
-    error_analysis = ErrorAnalysis(test_x, test_y_soft, test_predicted_y)
+    error_analysis = ErrorAnalysis(test_x, test_y_soft, [foo[1] for foo in test_predicted_y])
     error_analysis.save_errors()
 
     print()
