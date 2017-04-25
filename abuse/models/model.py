@@ -4,6 +4,7 @@ import os.path
 import sklearn.metrics as metrics  # type: ignore
 import scipy.stats as stats  # type: ignore
 import numpy as np  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
 
 import utils.file_manip as fmanip
 
@@ -55,6 +56,7 @@ class BinaryClassificationMetrics:
         self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='macro')
         self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
+        self.fpr, self.tpr, self.thr = metrics.roc_curve(y_expected, y_predicted_prob)
 
     def to_table_row(self) -> str:
         return "| {:.6f} | {:.6f} | {:.6f} | {:.6f} | {:.6f} | {:.6f} |".format(
@@ -68,6 +70,14 @@ class BinaryClassificationMetrics:
     def get_header(self) -> str:
         return ("| Accuracy | Precision | Recall | F1 | ROC | Spearman |\n" +
                 "| -------- | --------- | ------ | -- | --- | -------- |")
+
+    def make_roc_curve(self, save_path: str=None) -> Tuple[List[float], List[float], List[float]]:
+        plt.plot(self.fpr, self.tpr)
+        if save_path is not None:
+            plt.savefig(save_path)
+        else:
+            plt.show()
+        return self.fpr, self.tpr, self.thr
 
 
 class Model(Generic[TInput]):
