@@ -269,7 +269,8 @@ class RnnCharClassifier(Model[str]):
                     name="embedding")
             word_vectors = tf.nn.embedding_lookup(embedding, self.x_input)
 
-            self.predictor = self._make_bidirectional_rnn(word_vectors)
+            #self.predictor = self._make_bidirectional_rnn(word_vectors)
+            self.predictor = self._make_bidirectional_rnn(self.x_input)
             self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
                     logits=self.predictor, 
                     labels=self.y_hot),
@@ -295,9 +296,10 @@ class RnnCharClassifier(Model[str]):
         with tf.name_scope('bidirectional_rnn'):
             # Convert shape of [?, comment_size, embedding_size] into
             # a list of [?, embedding_size]
-            x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
+            #x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
+            x_unstacked = word_vectors
             output_weight = tf.Variable(
-                    tf.random_normal([self.n_hidden_layers, self.n_classes], dtype=tf.float64),
+                    tf.random_normal([self.n_hidden_layers * 2, self.n_classes], dtype=tf.float64),
                     dtype=tf.float64,
                     name='output_weight')
             output_bias = tf.Variable(
@@ -338,9 +340,9 @@ class RnnCharClassifier(Model[str]):
                     prediction = tf.matmul(last_output, output_weight) + output_bias
                     '''
 
-                    outputs, _ = tf.contrib.rnn.static_rnn(
+                    outputs, _ = tf.contrib.rnn.static_bidirectional_rnn(
                             forwards_cell,
-                            #backwards_cell,
+                            backwards_cell,
                             layer,
                             dtype=tf.float64,
                             scope='bidirectional_rnn_{}'.format(i))

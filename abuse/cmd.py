@@ -14,6 +14,7 @@ from data_extraction.wikipedia import *
 from models.bag_of_words import BagOfWordsClassifier
 from models.rnn_classifier import RnnClassifier
 from models.rnn_char_classifier import RnnCharClassifier
+from models.logistic_copy import CopiedClassifier
 from models.model import Model, BinaryClassificationMetrics
 import utils.file_manip as fmanip
 
@@ -61,10 +62,17 @@ def get_wikipedia_data(category: str = None,
     def extract_data(comments: AttackData) -> Data:
         x_values = []
         y_values = []
+        handled = set()
+        num_dups = 0
         for comment in comments:
+            if comment.rev_id in handled:
+                num_dups += 1
+                continue
+            handled.add(comment.rev_id)
             x_values.append(comment.comment)
             cls = 1 if getattr(comment.average, attribute) > threshold else 0  # type: ignore
             y_values.append(cls)
+        print("Num dups", num_dups)
         return x_values, y_values
     train_data, dev_data, test_data = funcs[category](small=use_small)  # type: ignore
 
@@ -84,6 +92,7 @@ def main() -> None:
 
     models = {
             'bag_of_words': BagOfWordsClassifier,
+            'copy': CopiedClassifier,
             'rnn': RnnClassifier,
             'rnn_char': RnnCharClassifier,
     }  # type: Dict[str, Type[Model]]
@@ -130,7 +139,7 @@ def main() -> None:
         fmanip.ensure_folder_exists(save_path)
         classifier.save(save_path)
 
-    print("Evaluating full training set...")
+    '''print("Evaluating full training set...")
     train_predicted_y = classifier.predict(train_x)
     print(train_predicted_y)
 
@@ -139,13 +148,13 @@ def main() -> None:
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
-    print()
+    print()'''
 
     print("Evaluating full dev/test set...")
     test_predicted_y = classifier.predict(test_x)
 
     print("Dev/test set results:")
-    metrics = BinaryClassificationMetrics(test_y, np.argmax(test_predicted_y, 1))
+    metrics = BinaryClassificationMetrics(test_y, test_predicted_y)
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)

@@ -30,14 +30,29 @@ class ErrorAnalysis:
                 if f is not None:
                     f.write("{:.6f} {:.6f} {}\n".format(exp, pred, comment))
 
+def one_hot(y):
+    out = []
+    for i in y:
+        if i == 0:
+            out.append([1, 0])
+        else:
+            out.append([0, 1])
+    return out
+
 class BinaryClassificationMetrics:
     def __init__(self, y_expected: List[int], 
-                       y_predicted: List[int]) -> None:
+                       y_predicted_prob: List[List[float]]) -> None:
+        y_expected_hot = np.array(one_hot(y_expected))
+        y_predicted = np.argmax(y_predicted_prob, 1)
+
+        print(y_expected_hot)
+        print(y_predicted)
+
         self.accuracy = metrics.accuracy_score(y_expected, y_predicted)
         self.precision = metrics.precision_score(y_expected, y_predicted)
         self.recall = metrics.recall_score(y_expected, y_predicted)
         self.f1 = metrics.f1_score(y_expected, y_predicted)
-        self.roc_auc = metrics.roc_auc_score(y_expected, y_predicted)
+        self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='macro')
         self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
 

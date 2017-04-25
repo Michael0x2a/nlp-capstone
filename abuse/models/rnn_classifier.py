@@ -3,11 +3,13 @@ import os.path
 import shutil
 import json
 import time  # type: ignore
+import random
 from collections import Counter
 
 import numpy as np  # type: ignore
 import tensorflow as tf  # type: ignore
 import nltk  # type: ignore
+import nltk.corpus  # type: ignore
 import sklearn.metrics  # type: ignore
 
 import utils.file_manip as fmanip
@@ -28,6 +30,13 @@ Paragraph = List[str]
 WordId = int
 ParagraphVec = List[WordId]
 Label = int
+
+stop_words = set(nltk.corpus.stopwords.words('english'))
+
+def to_words(inputs: str) -> List[str]:
+    words = nltk.word_tokenize(inputs)
+    return [word for word in words if (word not in stop_words)]
+
 
 def truncate_and_pad(paragraph: Paragraph, max_length: int) -> Paragraph:
     # Subtract 2 so we have space for the start and end tokens
@@ -93,6 +102,10 @@ class RnnClassifier(Model[str]):
                        n_classes: int = 2,
                        input_keep_prob: float = 1.0,
                        output_keep_prob: float = 1.0,
+                       learning_rate: float = 0.001,
+                       beta1: float = 0.9,
+                       beta2: float = 0.999,
+                       epsilon: float = 1e-08,
                        log_dir: str = fmanip.join('logs', 'rnn')) -> None:
         self.log_dir = log_dir
         fmanip.delete_folder(log_dir)
@@ -107,6 +120,10 @@ class RnnClassifier(Model[str]):
         self.n_classes = n_classes
         self.input_keep_prob = input_keep_prob
         self.output_keep_prob = output_keep_prob
+        self.learning_rate = learning_rate
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
 
         # Particular tensorflow nodes worth keeping a reference to
         # Types are set to Any because mypy doesn't yet understand
@@ -163,6 +180,10 @@ class RnnClassifier(Model[str]):
                 'log_dir': self.log_dir,
                 'input_keep_prob': self.input_keep_prob,
                 'output_keep_prob': self.output_keep_prob,
+                'learning_rate': self.learning_rate,
+                'beta1': self.beta1,
+                'beta2': self.beta2,
+                'epsilon': self.epsilon,
         }
 
     def _save_model(self, path: str) -> None:
@@ -274,7 +295,12 @@ class RnnClassifier(Model[str]):
                     logits=self.predictor, 
                     labels=self.y_hot),
                     name='loss')
-            self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
+
+            self.optimizer = tf.train.AdamOptimizer(
+                    learning_rate=self.learning_rate,
+                    beta1=self.beta1,
+                    beta2=self.beta2,
+                    epsilon=self.epsilon).minimize(self.loss)
 
             tf.summary.scalar('loss', self.loss)
 
@@ -297,7 +323,7 @@ class RnnClassifier(Model[str]):
             # a list of [?, embedding_size]
             x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
             output_weight = tf.Variable(
-                    tf.random_normal([self.n_hidden_layers, self.n_classes], dtype=tf.float64),
+                    tf.random_normal([self.n_hidden_layers * 2, self.n_classes], dtype=tf.float64),
                     dtype=tf.float64,
                     name='output_weight')
             output_bias = tf.Variable(
@@ -338,9 +364,9 @@ class RnnClassifier(Model[str]):
                     prediction = tf.matmul(last_output, output_weight) + output_bias
                     '''
 
-                    outputs, _ = tf.contrib.rnn.static_rnn(
+                    outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
                             forwards_cell,
-                            #backwards_cell,
+                            backwards_cell,
                             layer,
                             dtype=tf.float64,
                             scope='bidirectional_rnn_{}'.format(i))
@@ -358,7 +384,7 @@ class RnnClassifier(Model[str]):
         if len(params) != 0:
             raise Exception("RNN does not take in any extra params to train")
 
-        x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
+        x_data_raw = [truncate_and_pad(to_words(x), self.comment_size) for x in xs]
         x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
         self.vocab_map = make_vocab_mapping(x_data_raw, self.vocab_size)
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
@@ -369,7 +395,13 @@ class RnnClassifier(Model[str]):
 
         self.session.run(self.init)
         for i in range(self.epoch_size):
-            self.train_epoch(i, n_batches, x_lengths, x_final, ys)
+            indices = list(range(len(x_final)))
+            random.shuffle(indices)
+            x_lengths_new = [x_lengths[i] for i in indices]
+            x_final_new = [x_final[i] for i in indices]
+            ys_new = [ys[i] for i in indices]
+
+            self.train_epoch(i, n_batches, x_lengths_new, x_final_new, ys_new)
 
     def train_epoch(self, iteration: int,
                           n_batches: int, 
@@ -408,7 +440,7 @@ class RnnClassifier(Model[str]):
 
     def predict(self, xs: List[str]) -> List[List[float]]:
         assert self.vocab_map is not None
-        x_data_raw = [truncate_and_pad(nltk.word_tokenize(x), self.comment_size) for x in xs]
+        x_data_raw = [truncate_and_pad(to_words(x), self.comment_size) for x in xs]
         x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
         batch_data = {
