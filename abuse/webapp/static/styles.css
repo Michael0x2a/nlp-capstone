@@ -1,0 +1,58 @@
+h1 {
+    font-family: Futura,Trebuchet MS,Arial,sans-serif;
+    font-size: 36px;
+    font-style: normal;
+    font-variant: normal;
+    font-weight: 500;
+    line-height: 26.4px;
+}
+
+h2 {
+    font-family: Futura,Trebuchet MS,Arial,sans-serif;
+    font-size: 24px;
+    font-style: normal;
+    font-variant: normal;
+    font-weight: 500;
+    line-height: 15.4px;
+}
+
+p {
+    font-family: Futura,Trebuchet MS,Arial,sans-serif;
+    font-size: 14px;
+    font-style: normal;
+    font-variant: normal;
+    font-weight: 400;
+    line-height: 20px;
+}
+
+.spacer {
+    margin-bottom: 2em;
+}
+
+textarea {
+    display: block;
+    width: 100%;
+    margin-bottom: 1em;
+}
+
+table {
+    font-size: 18px;
+}
+
+th td {
+    font-weight: bold;
+}
+
+.prob-ok {
+    color: #006600;
+}
+
+.prob-neutral {
+    color: #dd6600;
+}
+
+.prob-bad {
+    color: #aa0000;
+}
+
+
