@@ -10,6 +10,26 @@ import utils.file_manip as fmanip
 TSelf = TypeVar('TSelf', bound='Model')
 TInput = TypeVar('TInput')
 
+class ErrorAnalysis:
+    def __init__(self, x: List[str], y_expected: List[float], y_predicted: List[float],
+                 threshold: float = 0.5) -> None:
+        self.x = x
+        self.y_expected = y_expected
+        self.y_predicted = y_predicted
+        self.threshold = threshold
+
+    def save_errors(self, path: str = "") -> None:
+        with open(os.path.join(path, "false_positives.txt") as fp,
+             open(os.path.join(path, "false_negatives.txt") as np:
+            for comment, exp, pred in zip(self.x, self.y_expected, self.y_predicted):
+                f = None
+                if exp > self.threshold and pred < self.threshold:
+                    f = fn
+                elif exp < self.threshold and pred > self.threshold:
+                    f = fp
+                if f is not None:
+                    f.write("{:.6f} {:.6f} {}\n".format(exp, pred, comment))
+
 class BinaryClassificationMetrics:
     def __init__(self, y_expected: List[int], 
                        y_predicted: List[int]) -> None:
