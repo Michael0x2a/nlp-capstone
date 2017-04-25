@@ -30,7 +30,7 @@ class ErrorAnalysis:
                 if f is not None:
                     f.write("{:.6f} {:.6f} {}\n".format(exp, pred, comment))
 
-def one_hot(y):
+def one_hot(y: List[int]) -> List[List[int]]:
     out = []
     for i in y:
         if i == 0:
