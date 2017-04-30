@@ -85,6 +85,8 @@ class BinaryClassificationMetrics:
 
     def make_roc_curve(self, save_path: str=None) -> Tuple[List[float], List[float], List[float]]:
         plt.plot(self.fpr, self.tpr)
+        plt.xlabel("False positive rate")
+        plt.ylabel("True positive rate")
         if save_path is not None:
             plt.savefig(save_path)
         else:
