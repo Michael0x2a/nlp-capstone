@@ -84,7 +84,7 @@ def main() -> None:
 
     models = {
             'bag_of_words': BagOfWordsClassifier,
-            'profanity_filter': ProfanityFilter,
+            'profanity_filter': ProfanityFilterClassifier,
             'lr': LogisticClassifier,
             'copy': CopiedClassifier,
             'rnn': RnnClassifier,
