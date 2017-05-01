@@ -28,7 +28,7 @@ class LogisticClassifier(Model[str]):
     def __init__(self,
                  num_grams: int=30000,
                  batch_size: int=32,
-                 epochs: int=20,
+                 epochs: int=80,
                  pos_weight: float=10,
                  lambda_: float=1e-7,
                  learning_rate: float=0.0001,
