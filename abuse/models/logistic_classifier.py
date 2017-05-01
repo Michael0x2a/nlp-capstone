@@ -2,9 +2,10 @@ from typing import List, Tuple, Optional, Dict, Generator, TypeVar
 import os
 import glob
 import random
+import ast
 from math import ceil
 import numpy as np  # type: ignore
-from scipy.sparse import csr_matrix  # type: ignore
+from scipy.sparse import csr_matrix, spdiags  # type: ignore
 import tensorflow as tf  # type: ignore
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
 from sklearn.metrics import recall_score, precision_score, f1_score, roc_auc_score, roc_curve  # type: ignore
@@ -29,31 +30,47 @@ class LogisticClassifier(Model[str]):
                  batch_size: int=32,
                  epochs: int=20,
                  pos_weight: float=10,
-                 reg_lambda: float=1e-7,
+                 lambda_: float=1e-7,
                  learning_rate: float=0.0001,
                  beta1: float=0.9,
                  beta2: float=0.999,
                  epsilon: float=1e-8,
                  base_summary_path: str=SUMMARY_PATH,
-                 restore_from: Optional[str]=None) -> None:
+                 restore_from: Optional[str]=None,
+                 run_num: int=0,
+                 it: int=0,
+                 epoch: int=0,
+                 vocabulary: Optional[str]=None,
+                 idf: Optional[List[float]]=None) -> None:
         self.num_grams = num_grams
         self.batch_size = batch_size
         self.epochs = epochs
         self.pos_weight = pos_weight
-        self.reg_lambda = reg_lambda
+        self.lambda_ = lambda_
         self.learning_rate = learning_rate
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
         self.base_summary_path = base_summary_path
 
+        self.run_num = run_num
+        self.it = it
+        self.epoch = epoch
+        if vocabulary is None or idf is None:
+            self.vocabulary = None
+            self.idf = None
+        else:
+            self.vocabulary = ast.literal_eval(vocabulary)
+            self.idf = np.array(idf)
+
         self.config = tf.ConfigProto(allow_soft_placement=True)
         self.graph = tf.Graph()
 
         self._build()
-        self.reset()
 
-        if restore_from is not None:
+        if restore_from is None:
+            self.reset()
+        else:
             self._restore_model(restore_from)
 
 
@@ -62,35 +79,42 @@ class LogisticClassifier(Model[str]):
             with self.graph.device("/gpu:0"):
                 self.session = tf.Session(graph=self.graph, config=self.config)
                 self.session.run(self.init)
-        
-        self.summary_path, self.run_num = self._get_next_summary_path()
+
+        self.run_num = self._get_next_run_num()
         self.it = 0
         self.epoch = 0
-    
-    def _get_next_summary_path(self) -> Tuple[str, int]:
+
+        if self.vocabulary is None or self.idf is None:
+            self.tfidf_vectorizer = None
+
+    def _get_next_run_num(self) -> int:
         i = 0
         while True:
             i += 1
             summary_path = self.base_summary_path.format(i)
             if not os.path.exists(summary_path) and not glob.glob(summary_path + "-*"):
-                return summary_path, i
-    
+                return i
+
+    def _get_summary_path(self) -> str:
+        return self.base_summary_path.format(self.run_num)
+
     def get_parameters(self) -> Dict[str, Any]:
         return {
                 "num_grams": self.num_grams,
                 "batch_size": self.batch_size,
                 "epochs": self.epochs,
                 "pos_weight": self.pos_weight,
-                "reg_lambda": self.reg_lambda,
+                "lambda_": self.lambda_,
                 "learning_rate": self.learning_rate,
                 "beta1": self.beta1,
                 "beta2": self.beta2,
                 "epsilon": self.epsilon,
                 "base_summary_path": self.base_summary_path,
-                "summary_path": self.summary_path,
                 "run_num": self.run_num,
                 "it": self.it,
-                "epoch": self.epoch
+                "epoch": self.epoch,
+                "vocabulary": str(self.tfidf_vectorizer.vocabulary_) if self.tfidf_vectorizer is not None else None,
+                "idf": self.tfidf_vectorizer.idf_.tolist() if self.tfidf_vectorizer is not None else None
         }
 
     def _build(self) -> None:
@@ -105,10 +129,19 @@ class LogisticClassifier(Model[str]):
                 self.saver = tf.train.Saver()
 
     def _build_inputs(self) -> None:
-        self.tfidf_vectorizer = None  # type: ignore
-        self.counts = tf.sparse_placeholder(tf.float32, [None, self.num_grams], "counts")
-        self.target_labels = tf.placeholder(tf.bool, [None], "target_labels")
-    
+        if self.vocabulary is not None and self.idf is not None:
+            self.tfidf_vectorizer = TfidfVectorizer(
+                norm="l2",
+                ngram_range=(1,5),
+                max_features=self.num_grams,
+                vocabulary=self.vocabulary,
+                dtype=np.float32)
+            self.tfidf_vectorizer._tfidf._idf_diag = spdiags(self.idf, 0, len(self.idf), len(self.idf))
+
+        with tf.name_scope("input"):
+            self.counts = tf.sparse_placeholder(tf.float32, [None, self.num_grams], "counts")
+            self.target_labels = tf.placeholder(tf.bool, [None], "target_labels")
+
     def _build_model(self) -> None:
         with tf.name_scope("model"):
             W = tf.Variable(tf.random_normal([self.num_grams, 1]), name="weight")
@@ -116,7 +149,7 @@ class LogisticClassifier(Model[str]):
             matmul = tf.squeeze(tf.sparse_tensor_dense_matmul(self.counts, W), axis=1)
             self.logits = tf.add(matmul, b)
 
-        with tf.name_scope("loss"):
+        with tf.name_scope("regularizer"):
             self.regularizer = tf.nn.l2_loss(W, name="regularizer")
 
         with tf.name_scope("probabilities"):
@@ -127,7 +160,7 @@ class LogisticClassifier(Model[str]):
             cross_entropy = tf.nn.weighted_cross_entropy_with_logits(
                 logits=self.logits, targets=tf.to_float(self.target_labels), pos_weight=self.pos_weight)
             cross_entropy_mean = tf.reduce_mean(cross_entropy, name="x_entropy_mean")
-            self.loss = tf.reduce_mean(cross_entropy_mean + self.reg_lambda * self.regularizer)
+            self.loss = tf.reduce_mean(cross_entropy_mean + self.lambda_ * self.regularizer)
 
             tf.summary.scalar("x_entropy_mean", cross_entropy_mean)
             tf.summary.scalar("loss", self.loss)
@@ -139,7 +172,7 @@ class LogisticClassifier(Model[str]):
                 beta1=self.beta1,
                 beta2=self.beta2,
                 epsilon=self.epsilon).minimize(self.loss)
-    
+
     def train(self, comments: List[str], labels: List[int], epochs: Optional[int]=None, batch_size: Optional[int]=None, **params: Any) -> None:
         if self.tfidf_vectorizer is None:
             self.tfidf_vectorizer = TfidfVectorizer(
@@ -160,7 +193,7 @@ class LogisticClassifier(Model[str]):
 
         batch_count = ceil(len(labels) / batch_size)
         indices = list(range(len(labels)))
-        writer = tf.summary.FileWriter(self.summary_path, self.graph)
+        writer = tf.summary.FileWriter(self._get_summary_path(), self.graph)
 
         for _ in range(epochs):
             self.epoch += 1
@@ -220,17 +253,17 @@ class LogisticClassifier(Model[str]):
         return preds
 
     def _save_model(self, path: str) -> None:
-        self.save(pathname=path)
+        self.save_(pathname=path)
 
-    def save(self, filename: str="model.ckpt", pathname: Optional[str]=None) -> None:
+    def save_(self, filename: str="model.ckpt", pathname: Optional[str]=None) -> None:
         if pathname is None:
-            pathname = self.summary_path
+            pathname = self._get_summary_path()
         self.saver.save(self.session, os.path.join(pathname, filename))  # type: ignore
 
     def _restore_model(self, path: str) -> None:
-        self.restore(pathname=path)
+        self.restore_(pathname=path)
 
-    def restore(self, run_num: Optional[int]=None, filename: str="model.ckpt", pathname: Optional[str]=None) -> None:
+    def restore_(self, run_num: Optional[int]=None, filename: str="model.ckpt", pathname: Optional[str]=None) -> None:
         # doesn't restore summary_path, run_num, it count, or epoch
         if pathname is None:
             if run_num is None:
@@ -247,6 +280,7 @@ class LogisticClassifier(Model[str]):
 
         with self.graph.as_default():
             with self.graph.device("/gpu:0"):
+                self.session = tf.Session(graph=self.graph, config=self.config)
                 self.saver.restore(self.session, os.path.join(pathname, filename))  # type: ignore
 
 def evaluate(labels: List[bool], pred: List[bool]) -> None:
