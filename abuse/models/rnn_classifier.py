@@ -34,12 +34,13 @@ Label = int
 stop_words = set(nltk.corpus.stopwords.words('english'))
 
 def to_words(inputs: str) -> List[str]:
-    inputs = inputs.replace("=====", "")
+    '''inputs = inputs.replace("=====", "")
     inputs = inputs.replace("====", "")
     inputs = inputs.replace("===", "")
-    inputs = inputs.replace("==", "")
+    inputs = inputs.replace("==", "")'''
     words = nltk.word_tokenize(inputs)
-    return [word for word in words if (word not in stop_words)]
+    #return [word for word in words if (word not in stop_words)]
+    return words
 
 
 def truncate_and_pad(paragraph: Paragraph, max_length: int) -> Paragraph:
@@ -216,7 +217,7 @@ class RnnClassifier(Model[str]):
         with open(fmanip.join(path, 'vocab_map.json'), 'r') as stream:
             self.vocab_map = json.load(stream)
 
-        self.session = tf.Session()
+        self.session = tf.Session(graph = tf.get_default_graph())
         saver = tf.train.import_meta_graph(fmanip.join(path, 'tensorflow_graph.meta'))
         saver.restore(self.session, fmanip.join(path, 'model'))
 
@@ -251,7 +252,7 @@ class RnnClassifier(Model[str]):
             self.init = tf.global_variables_initializer()
 
         #self.session = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-        self.session = tf.Session()
+        self.session = tf.Session(graph = tf.get_default_graph())
 
     def _build_input(self) -> None:
         with tf.name_scope('inputs'):
@@ -399,13 +400,13 @@ class RnnClassifier(Model[str]):
 
         self.session.run(self.init)
         for i in range(self.epoch_size):
-            indices = list(range(len(x_final)))
+            '''indices = list(range(len(x_final)))
             random.shuffle(indices)
             x_lengths_new = [x_lengths[i] for i in indices]
             x_final_new = [x_final[i] for i in indices]
-            ys_new = [ys[i] for i in indices]
+            ys_new = [ys[i] for i in indices]'''
 
-            self.train_epoch(i, n_batches, x_lengths_new, x_final_new, ys_new)
+            self.train_epoch(i, n_batches, x_lengths, x_final, ys)
 
     def train_epoch(self, iteration: int,
                           n_batches: int, 

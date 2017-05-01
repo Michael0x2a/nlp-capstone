@@ -36,10 +36,14 @@ class ProfanityFilterClassifier(Model[str]):
         out = []
         for sentence in xs:
             sentence = sentence.lower()
+            attack = False
             for word in banlist:
                 if word in sentence:
-                    out.append([0.0, 1.0])
+                    print("Detected banned word: " + word)
+                    attack = True
                     break
+            if attack:
+                out.append([0.0, 1.0])
             else:
                 out.append([1.0, 0.0])
         return np.array(out)

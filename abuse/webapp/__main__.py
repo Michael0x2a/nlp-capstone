@@ -9,13 +9,35 @@ import time
 import flask
 from flask_cors import CORS, cross_origin
 
+import tensorflow as tf
+
 from models.model import Model
 from models.bag_of_words import BagOfWordsClassifier
-#from models.rnn_classifier import RnnClassifier
+from models.profanity_filter import ProfanityFilterClassifier
+from models.rnn_classifier import RnnClassifier
+from models.logistic_classifier import LogisticClassifier
 
 # Load classifiers into global scope (may take a while)
-clf1 = BagOfWordsClassifier.restore_from_saved('attack_bag_of_words')
-#clf2 = RnnClassifier.restore_from_saved('attack_rnn_small_epoch6')
+profanity_clf = ProfanityFilterClassifier()
+
+bag_clf_attack = BagOfWordsClassifier.restore_from_saved('core_models/attack_bag_of_words')
+bag_clf_toxicity = BagOfWordsClassifier.restore_from_saved('core_models/attack_bag_of_words')
+bag_clf_aggression = BagOfWordsClassifier.restore_from_saved('core_models/aggression_bag_of_words')
+
+with tf.Graph().as_default() as g:
+    rnn_clf_attack = RnnClassifier.restore_from_saved('core_models/attack_rnn')
+with tf.Graph().as_default() as g:
+    rnn_clf_toxicity = RnnClassifier.restore_from_saved('core_models/toxicity_rnn')
+with tf.Graph().as_default() as g:
+    rnn_clf_aggression = RnnClassifier.restore_from_saved('core_models/aggression_rnn')
+
+'''
+with tf.Graph().as_default() as g:
+    lr_clf_attack = LogisticClassifier.restore_from_saved('core_models/attack_lr')
+with tf.Graph().as_default() as g:
+    lr_clf_toxicity = LogisticClassifier.restore_from_saved('core_models/toxicity_lr')
+with tf.Graph().as_default() as g:
+    lr_clf_aggression = LogisticClassifier.restore_from_saved('core_models/aggression_lr')'''
 
 
 # Wire together webapp
@@ -37,19 +59,22 @@ def api_classify():
 
     out = {
         'attack': {
-            'bag_of_words': fetch(clf1, text),
-            'lr': placeholder(text),
-            'rnn': placeholder(text),
+            'profanity': fetch(profanity_clf, text),
+            'bag_of_words': fetch(bag_clf_attack, text),
+            'lr': placeholder(text), #fetch(lr_clf_attack, text),
+            'rnn': fetch(rnn_clf_attack, text),
         },
         'aggression': {
-            'bag_of_words': placeholder(text),
-            'lr': placeholder(text),
-            'rnn': placeholder(text),
+            'profanity': fetch(profanity_clf, text),
+            'bag_of_words': fetch(bag_clf_aggression, text),
+            'lr': placeholder(text),  #fetch(lr_clf_aggression, text),
+            'rnn': fetch(rnn_clf_aggression, text),
         },
         'toxicity': {
-            'bag_of_words': placeholder(text),
-            'lr': placeholder(text),
-            'rnn': placeholder(text),
+            'profanity': fetch(profanity_clf, text),
+            'bag_of_words': fetch(bag_clf_toxicity, text),
+            'lr': placeholder(text),  #fetch(lr_clf_toxicity, text),
+            'rnn': fetch(rnn_clf_toxicity, text),
         },
     }
 
@@ -70,5 +95,5 @@ def fetch(clf: Model, text: str) -> None:
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=80)
 

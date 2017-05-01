@@ -1,5 +1,5 @@
 $(document).ready(function() {
-    var CLASSIFY_URL = "http://0.0.0.0:8080/api/classify";
+    var CLASSIFY_URL = "/api/classify";
     
     function load(div_id, blob) {
         var prob = blob['prob_attack'].toFixed(6);
@@ -18,14 +18,17 @@ $(document).ready(function() {
         console.log("Got data!");
         console.log(data);
     
+        load('#profanity-attack', data['attack']['profanity'])
         load('#bag-attack', data['attack']['bag_of_words']);
         load('#lr-attack', data['attack']['lr']);
         load('#rnn-attack', data['attack']['rnn']);
 
+        load('#profanity-aggression', data['aggression']['profanity'])
         load('#bag-aggression', data['aggression']['bag_of_words']);
         load('#lr-aggression', data['aggression']['lr']);
         load('#rnn-aggression', data['aggression']['rnn']);
 
+        load('#profanity-toxicity', data['toxicity']['profanity'])
         load('#bag-toxicity', data['toxicity']['bag_of_words']);
         load('#lr-toxicity', data['toxicity']['lr']);
         load('#rnn-toxicity', data['toxicity']['rnn']);
