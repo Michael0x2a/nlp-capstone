@@ -1,5 +1,6 @@
 from typing import Dict, List, Any, Generic, TypeVar, Iterable, Optional, Tuple
 import os.path
+import glob
 
 import sklearn.metrics as metrics  # type: ignore
 import scipy.stats as stats  # type: ignore
@@ -95,9 +96,13 @@ class BinaryClassificationMetrics:
 
 
 class Model(Generic[TInput]):
-    # Core methods that must be implemented
-    def __init__(self, restore_from: Optional[str] = None, 
-                       **params: Any) -> None:
+    # default log dir; override this
+    base_log_dir = "runs/run{}"
+
+    def __init__(self,
+                 restore_from: Optional[str] = None,
+                 run_num: Optional[int]=None,
+                 **params: Any) -> None:
         '''The constructor is responsible for storing all
         relevant parameters, and building the model. All parameters
         must have a default value, if not specified.
@@ -113,9 +118,13 @@ class Model(Generic[TInput]):
         The 'restore_from' path will always be a path to an existing
         folder; each class can save/load arbitrary files to that folder.
         '''
-        raise NotImplementedError()
+        self.run_num = self._get_next_run_num() if run_num is None else run_num
+        if restore_from is not None:
+            self._restore_model(restore_from)
 
-    def get_parameters(self) -> Dict[str, Any]:
+    # Core methods that must be implemented
+
+    def _get_parameters(self) -> Dict[str, Any]:
         '''Returns all parameters for this class. This will be used
         when saving/loading models.'''
         raise NotImplementedError()
@@ -124,6 +133,9 @@ class Model(Generic[TInput]):
         '''Saves the model. The path is a path to an existing folder;
         this method may create any arbitrary files/folders within the
         provided path.'''
+        raise NotImplementedError()
+
+    def _restore_model(self, path: str) -> None:
         raise NotImplementedError()
 
     def train(self, xs: List[TInput], ys: List[int], **params: Any) -> None:
@@ -142,18 +154,65 @@ class Model(Generic[TInput]):
         return self.predict([x])[0]
 
     @classmethod
-    def restore_from_saved(cls: Any, path: str) -> Any:
+    def _get_next_run_num(cls: Any) -> int:
+        i = 0
+        while True:
+            i += 1
+            log_dir = cls.base_log_dir.format(i)
+            if not os.path.exists(log_dir) and not glob.glob(log_dir + "-*"):
+                return i
+
+    def _get_log_dir(self) -> str:
+        return self.base_log_dir.format(self.run_num)
+
+    def format_log_dir(self, path:Optional[str]) -> str:
+        return self._get_log_dir() if path is None\
+                                   else path.format(self._get_log_dir())
+
+    def _get_all_parameters(self) -> Dict[str, Any]:
+        base_params = { "run_num": self.run_num }
+        return { **base_params, **self._get_parameters() }
+
+    @classmethod
+    def restore_from_saved(cls: Any,
+                           run_num: Optional[int]=None,
+                           path: Optional[str]=None) -> Any:
         # Signature really should be
         # (Type[TSelf], str) -> TSelf
         # ...but idk if mypy supports this fully atm
+        '''Restores model and parameters from given location
+        If run num is passed, tries to find that run's path using the base log dir;
+        if no run num is passed, uses the last run's path. If path is passed, formats
+        the given string with the run path; else just restores from the run path.
+        (E.g. path="{}/epoch10", run_num=4 -> "runs/run4/epoch10")'''
+        print(run_num, path)
+        if run_num is None:
+            run_num = cls._get_next_run_num() - 1
+        run_dir = cls.base_log_dir.format(run_num)
+        if not os.path.exists(run_dir):
+            run_dirs = glob.glob(run_dir + "-*")
+            if len(run_dirs) < 1:
+                print("Error: No run with that number.")
+                return
+            elif len(run_dirs) > 1:
+                print("Multiple runs with that number.")
+            run_dir = run_dirs[0]
+
+        path = run_dir if path is None else path.format(run_dir)
+
         assert os.path.isdir(path)
         return cls(
-                restore_from=path, 
+                restore_from=path,
                 **fmanip.load_json(fmanip.join(path, 'params.json')))
 
-    def save(self, path: str) -> None:
+    def save(self, path: Optional[str]=None) -> None:
+        '''Saves the model and parameters. The path can be a string to be
+        formatted with the default path (including a completely different
+        path that won't be formatted) or None to use the default path of
+        the log dir. (E.g. path="{}/epoch100" -> "runs/run10/epoch100")'''
+        path = self.format_log_dir(path)
         fmanip.ensure_folder_exists(path)
         param_path = fmanip.join(path, 'params.json')
-        fmanip.write_nice_json(self.get_parameters(), param_path)
+        fmanip.write_nice_json(self._get_all_parameters(), param_path)
         self._save_model(path)
 

@@ -19,14 +19,20 @@ banlist = [
 ]
 
 class ProfanityFilterClassifier(Model[str]):
-    # Core methods that must be implemented
-    def __init__(self, restore_from: Optional[str] = None) -> None:
-        pass
+    base_log_dir = "runs/filter/run{}"
 
-    def get_parameters(self) -> Dict[str, Any]:
+    # Core methods that must be implemented
+    def __init__(self, restore_from: Optional[str] = None,
+                       run_num: Optional[int]=None) -> None:
+        super.__init__()
+
+    def _get_parameters(self) -> Dict[str, Any]:
         return {}
 
     def _save_model(self, path: str) -> None:
+        pass
+
+    def _restore_model(self, path: str) -> None:
         pass
 
     def train(self, xs: List[str], ys: List[int], **params: Any) -> None:

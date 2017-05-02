@@ -103,11 +103,31 @@ def main() -> None:
     verify_help(model_class, info.model_params)
 
     # Extract some metacommands
-    should_reload = 'restore_from' in info.model_params
+    restore_path = info.model_params.get('restore_from', None)
+    if 'restore' in info.model_params:
+        # restore can be an int to specify the run number to restore,
+        # or a bool where True specifies the previous run and False doesn't restore,
+        # or unspecified to restore only if restore_path is specified
+        should_reload = info.model_params['restore']
+        if not isinstance(should_reload, bool) and isinstance(should_reload, int):
+        # apparently, bools are ints
+            restore_num = should_reload
+            should_reload = True
+        else:
+            restore_num = None
+    else:
+        should_reload = restore_path is not None
+        restore_num = None
+
     save_path = info.model_params.get('save_to', None)
     if save_path is not None:
         del info.model_params['save_to']
-    
+    if 'save' in info.model_params:
+        should_save = info.model_params['save']
+        del info.model_params['save']
+    else:
+        should_save = save_path is not None
+
     # Ok, go
     print("Loading {} data...".format(info.dataset_name))
     (train_x, train_y_soft), (test_x, test_y_soft) = dataset_func(**info.dataset_params)  # type: ignore
@@ -115,10 +135,8 @@ def main() -> None:
     test_y = [int(foo > 0.5) for foo in test_y_soft]
 
     if should_reload:
-        restore_path = info.model_params['restore_from']
-        assert isinstance(restore_path, str)
         print("Loading saved model from {}...".format(restore_path))
-        classifier = model_class.restore_from_saved(restore_path)
+        classifier = model_class.restore_from_saved(run_num=restore_num, path=restore_path)
     else:
         print("Building {} model...".format(info.model_name))
         classifier = model_class(**info.model_params)  # type: ignore
@@ -129,8 +147,8 @@ def main() -> None:
     # Hint for mypy
     assert isinstance(classifier, Model)
 
-    if save_path is not None:
-        assert isinstance(save_path, str)
+    if should_save:
+        save_path = classifier.format_log_dir(save_path)
         print("Saving model to {}...".format(save_path))
         fmanip.ensure_folder_exists(save_path)
         classifier.save(save_path)

@@ -14,9 +14,6 @@ from scipy.stats import spearmanr  # type: ignore
 from custom_types import *
 from models.model import Model
 
-# default path to save things in
-SUMMARY_PATH = "runs/lr{0}"
-
 T = TypeVar("T")
 
 def chunks(l: List[T], n: int) -> Generator[List[T], None, None]:
@@ -25,7 +22,11 @@ def chunks(l: List[T], n: int) -> Generator[List[T], None, None]:
         yield l[i:i + n]
 
 class LogisticClassifier(Model[str]):
+    base_log_dir = "runs/lr/run{}"
+
     def __init__(self,
+                 restore_from: Optional[str]=None,
+                 run_num: Optional[int]=None,
                  num_grams: int=30000,
                  batch_size: int=32,
                  epochs: int=80,
@@ -35,9 +36,6 @@ class LogisticClassifier(Model[str]):
                  beta1: float=0.9,
                  beta2: float=0.999,
                  epsilon: float=1e-8,
-                 base_summary_path: str=SUMMARY_PATH,
-                 restore_from: Optional[str]=None,
-                 run_num: int=0,
                  it: int=0,
                  epoch: int=0,
                  vocabulary: Optional[str]=None,
@@ -51,9 +49,7 @@ class LogisticClassifier(Model[str]):
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
-        self.base_summary_path = base_summary_path
 
-        self.run_num = run_num
         self.it = it
         self.epoch = epoch
         if vocabulary is None or idf is None:
@@ -70,8 +66,8 @@ class LogisticClassifier(Model[str]):
 
         if restore_from is None:
             self.reset()
-        else:
-            self._restore_model(restore_from)
+
+        super().__init__(restore_from, run_num)
 
 
     def reset(self) -> None:
@@ -87,18 +83,7 @@ class LogisticClassifier(Model[str]):
         if self.vocabulary is None or self.idf is None:
             self.tfidf_vectorizer = None
 
-    def _get_next_run_num(self) -> int:
-        i = 0
-        while True:
-            i += 1
-            summary_path = self.base_summary_path.format(i)
-            if not os.path.exists(summary_path) and not glob.glob(summary_path + "-*"):
-                return i
-
-    def _get_summary_path(self) -> str:
-        return self.base_summary_path.format(self.run_num)
-
-    def get_parameters(self) -> Dict[str, Any]:
+    def _get_parameters(self) -> Dict[str, Any]:
         return {
                 "num_grams": self.num_grams,
                 "batch_size": self.batch_size,
@@ -109,8 +94,6 @@ class LogisticClassifier(Model[str]):
                 "beta1": self.beta1,
                 "beta2": self.beta2,
                 "epsilon": self.epsilon,
-                "base_summary_path": self.base_summary_path,
-                "run_num": self.run_num,
                 "it": self.it,
                 "epoch": self.epoch,
                 "vocabulary": str(self.tfidf_vectorizer.vocabulary_) if self.tfidf_vectorizer is not None else None,
@@ -193,7 +176,7 @@ class LogisticClassifier(Model[str]):
 
         batch_count = ceil(len(labels) / batch_size)
         indices = list(range(len(labels)))
-        writer = tf.summary.FileWriter(self._get_summary_path(), self.graph)
+        writer = tf.summary.FileWriter(self._get_log_dir(), self.graph)
 
         for _ in range(epochs):
             self.epoch += 1
@@ -257,7 +240,7 @@ class LogisticClassifier(Model[str]):
 
     def save_(self, filename: str="model.ckpt", pathname: Optional[str]=None) -> None:
         if pathname is None:
-            pathname = self._get_summary_path()
+            pathname = self._get_log_dir()
         self.saver.save(self.session, os.path.join(pathname, filename))  # type: ignore
 
     def _restore_model(self, path: str) -> None:

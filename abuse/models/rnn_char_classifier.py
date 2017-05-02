@@ -64,6 +64,8 @@ def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> List[W
     return [vocab_map.get(word, unk_id) for word in para]
 
 class RnnCharClassifier(Model[str]):
+    base_log_dir = "runs/rnnchar/run{}"
+
     '''
     RNN classifier
 
@@ -80,10 +82,9 @@ class RnnCharClassifier(Model[str]):
     --vocab_size [int; default=141000]
 
     --embedding_size [int; default=32]
-
-    --log_dir [str; default="logs/rnn"]
     '''
     def __init__(self, restore_from: Optional[str] = None,
+                       run_num: Optional[int]=None,
                        comment_size: int = 100,
                        batch_size: int = 125,
                        epoch_size: int = 10,
@@ -92,10 +93,7 @@ class RnnCharClassifier(Model[str]):
                        embedding_size: int = 32,
                        n_classes: int = 2,
                        input_keep_prob: float = 1.0,
-                       output_keep_prob: float = 1.0,
-                       log_dir: str = fmanip.join('logs', 'rnn')) -> None:
-        self.log_dir = log_dir
-        fmanip.delete_folder(log_dir)
+                       output_keep_prob: float = 1.0) -> None:
 
         # Hyperparameters
         self.comment_size = comment_size
@@ -131,8 +129,8 @@ class RnnCharClassifier(Model[str]):
 
         if restore_from is None:
             self._build_model()
-        else:
-            self._restore_model(restore_from)
+
+        super().__init__(restore_from, run_num)
 
     def _assert_all_setup(self) -> None:
         assert self.x_input is not None
@@ -152,7 +150,7 @@ class RnnCharClassifier(Model[str]):
         assert self.session is not None
         assert self.vocab_map is not None
 
-    def get_parameters(self) -> Dict[str, Any]:
+    def _get_parameters(self) -> Dict[str, Any]:
         return {
                 'comment_size': self.comment_size,
                 'batch_size': self.batch_size,
@@ -160,7 +158,6 @@ class RnnCharClassifier(Model[str]):
                 'n_hidden_layers': self.n_hidden_layers,
                 'embedding_size': self.embedding_size,
                 'n_classes': self.n_classes,
-                'log_dir': self.log_dir,
                 'input_keep_prob': self.input_keep_prob,
                 'output_keep_prob': self.output_keep_prob,
         }
@@ -208,7 +205,7 @@ class RnnCharClassifier(Model[str]):
         self.output = tf.get_collection('output')[0]
         self.output_prob = tf.get_collection('output_prob')[0]
         self.init = tf.get_collection('init')[0]
-        self.logger = tf.summary.FileWriter(self.log_dir, graph=tf.get_default_graph())
+        self.logger = tf.summary.FileWriter(self._get_log_dir(), graph=tf.get_default_graph())
 
         self._assert_all_setup()
 
@@ -222,7 +219,7 @@ class RnnCharClassifier(Model[str]):
             print('output_shape', self.output.shape)
 
             self.summary = tf.summary.merge_all()
-            self.logger = tf.summary.FileWriter(self.log_dir, graph=tf.get_default_graph())
+            self.logger = tf.summary.FileWriter(self._get_log_dir(), graph=tf.get_default_graph())
             self.init = tf.global_variables_initializer()
 
         #self.session = tf.Session(config=tf.ConfigProto(log_device_placement=True))

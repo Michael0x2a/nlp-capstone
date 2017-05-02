@@ -98,3 +98,6 @@ ENV/
 
 # Mypy
 .mypy_cache
+
+# Logs
+abuse/runs/

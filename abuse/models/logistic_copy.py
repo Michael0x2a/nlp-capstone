@@ -20,6 +20,8 @@ import utils.file_manip as fmanip
 
 
 class CopiedClassifier(Model[str]):
+    base_log_dir = "runs/lrcopy/run{}"
+
     '''
     Bag of words classifier:
 
@@ -31,6 +33,7 @@ class CopiedClassifier(Model[str]):
 
     # Core methods that must be implemented
     def __init__(self, restore_from: Optional[str] = None,
+            run_num: Optional[int]=None,
             max_features: int = 10000,
             ngram_range_lo: int = 1,
             ngram_range_hi: int = 2,
@@ -46,10 +49,12 @@ class CopiedClassifier(Model[str]):
                 ('tfidf', TfidfTransformer()),
                 ('clf', LogisticRegression()),
             ])
-        else:
-            self.classifier = joblib.load(fmanip.join(restore_from, 'classifier.pkl'))
+        super().__init__(restore_from, run_num)
 
-    def get_parameters(self) -> Dict[str, Any]:
+    def _restore_model(self, path: str) -> None:
+        self.classifier = joblib.load(fmanip.join(path, 'classifier.pkl'))
+
+    def _get_parameters(self) -> Dict[str, Any]:
         return {
                 'max_features': self.max_features,
                 'ngram_range_lo': self.ngram_range_lo,
