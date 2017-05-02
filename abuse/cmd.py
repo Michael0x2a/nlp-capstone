@@ -17,15 +17,14 @@ from models.rnn_classifier import RnnClassifier
 from models.rnn_char_classifier import RnnCharClassifier
 from models.logistic_copy import CopiedClassifier
 from models.profanity_filter import ProfanityFilterClassifier
-from models.model import Model, BinaryClassificationMetrics
+from models.model import Model, BinaryClassificationMetrics, ErrorAnalysis
 import utils.file_manip as fmanip
 
 Primitive = Union[int, float, str, bool]
-Data = Tuple[List[str], List[int]]
+Data = Tuple[List[str], List[float]]
 
 def get_wikipedia_data(category: str = None,
                        attribute: str = None,
-                       threshold: float = 0.5, 
                        use_dev: bool = True,
                        use_small: bool = False) -> Tuple[Data, Data]:
     '''
@@ -38,10 +37,6 @@ def get_wikipedia_data(category: str = None,
     --attribute [str]
         The particular attribute from that dataset to test on.
         Defaults to the category name if not set.
-
-    --threshold [float; default = 0.5]
-        Any comments with an average attribute score larger then the
-        threshold is labeled as an '1' (and is otherwise 0).
                     
     --use_dev [bool; default = True]
         If true, uses the dev dataset for evaluation, otherwise 
@@ -64,18 +59,12 @@ def get_wikipedia_data(category: str = None,
     def extract_data(comments: AttackData) -> Data:
         x_values = []
         y_values = []
-        handled = set()
-        num_dups = 0
         for comment in comments:
-            if comment.rev_id in handled:
-                num_dups += 1
-                continue
-            handled.add(comment.rev_id)
             x_values.append(comment.comment)
-            cls = 1 if getattr(comment.average, attribute) > threshold else 0  # type: ignore
+            cls = getattr(comment.average, attribute)  # type: ignore
             y_values.append(cls)
-        print("Num dups", num_dups)
         return x_values, y_values
+
     train_data, dev_data, test_data = funcs[category](small=use_small)  # type: ignore
 
     train = extract_data(train_data)
@@ -113,20 +102,46 @@ def main() -> None:
     verify_help(model_class, info.model_params)
 
     # Extract some metacommands
-    should_reload = 'restore_from' in info.model_params
+    restore_path = info.model_params.get('restore_from', None)
+    if 'restore' in info.model_params:
+        # restore can be an int to specify the run number to restore,
+        # or a bool where True specifies the previous run and False doesn't restore,
+        # or unspecified to restore only if restore_path is specified
+        should_reload = info.model_params['restore']
+        if not isinstance(should_reload, bool) and isinstance(should_reload, int):
+        # apparently, bools are ints
+            restore_num = should_reload
+            should_reload = True
+        else:
+            restore_num = None
+    else:
+        should_reload = restore_path is not None
+        restore_num = None
+
     save_path = info.model_params.get('save_to', None)
     if save_path is not None:
         del info.model_params['save_to']
-    
+    if 'save' in info.model_params:
+        should_save = info.model_params['save']
+        del info.model_params['save']
+    else:
+        should_save = save_path is not None
+
+    if 'save_analysis' in info.model_params:
+        save_analysis = info.model_params['save_analysis']
+        del info.model_params['save_analysis']
+    else:
+        save_analysis = False
+
     # Ok, go
     print("Loading {} data...".format(info.dataset_name))
-    (train_x, train_y), (test_x, test_y) = dataset_func(**info.dataset_params)  # type: ignore
+    (train_x, train_y_soft), (test_x, test_y_soft) = dataset_func(**info.dataset_params)  # type: ignore
+    train_y = [int(foo > 0.5) for foo in train_y_soft]
+    test_y = [int(foo > 0.5) for foo in test_y_soft]
 
     if should_reload:
-        restore_path = info.model_params['restore_from']
-        assert isinstance(restore_path, str)
         print("Loading saved model from {}...".format(restore_path))
-        classifier = model_class.restore_from_saved(restore_path)
+        classifier = model_class.restore_from_saved(run_num=restore_num, path=restore_path)
     else:
         print("Building {} model...".format(info.model_name))
         classifier = model_class(**info.model_params)  # type: ignore
@@ -137,8 +152,8 @@ def main() -> None:
     # Hint for mypy
     assert isinstance(classifier, Model)
 
-    if save_path is not None:
-        assert isinstance(save_path, str)
+    if should_save:
+        save_path = classifier.format_log_dir(save_path)
         print("Saving model to {}...".format(save_path))
         fmanip.ensure_folder_exists(save_path)
         classifier.save(save_path)
@@ -148,7 +163,7 @@ def main() -> None:
     print(train_predicted_y)
 
     print("Training set results:")
-    metrics = BinaryClassificationMetrics(train_y, np.argmax(train_predicted_y, 1))
+    metrics = BinaryClassificationMetrics(train_y, train_predicted_y)
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
@@ -162,6 +177,13 @@ def main() -> None:
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
+    print()
+
+    if save_analysis:
+        print("Saving error analysis...")
+        error_analysis = ErrorAnalysis(test_x, test_y_soft, [foo[1] for foo in test_predicted_y])
+        error_analysis.save_errors()
+
     print()
 
 
