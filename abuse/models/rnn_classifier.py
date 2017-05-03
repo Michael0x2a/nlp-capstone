@@ -5,6 +5,7 @@ import json
 import time  # type: ignore
 import random
 from collections import Counter
+import re
 
 import numpy as np  # type: ignore
 import tensorflow as tf  # type: ignore
@@ -33,14 +34,31 @@ Label = int
 
 stop_words = set(nltk.corpus.stopwords.words('english'))
 
+# Copied from https://mathiasbynens.be/demo/url-regex
+# using @imme_emosol's implementation
+_url = re.compile('(https?|ftp)://(-\\.)?([^\\s/?\\.#-]+\\.?)+(/[^\\s]*)?')
+_missing_space_after_period = re.compile('([a-z])\\.([a-zA-Z])')
+_quotes_at_start = re.compile("''([a-zA-Z])")
+_colons_at_start = re.compile('\\:+([a-zA-Z0-9])')
+
 def to_words(inputs: str) -> List[str]:
-    '''inputs = inputs.replace("=====", "")
-    inputs = inputs.replace("====", "")
-    inputs = inputs.replace("===", "")
-    inputs = inputs.replace("==", "")'''
+    inputs = re.sub(_url, '$UNK-URL', inputs)
+    inputs = inputs.replace('=====', '')
+    inputs = inputs.replace('====', '')
+    inputs = inputs.replace('===', '')
+    inputs = inputs.replace('==', '')
+    inputs = inputs.replace('`', "'")
+    inputs = re.sub(_quotes_at_start, (lambda match: "'' {}".format(match.group(1))), inputs)
+    inputs = re.sub(_colons_at_start, (lambda match: match.group(1)), inputs)
     words = nltk.word_tokenize(inputs)
-    #return [word for word in words if (word not in stop_words)]
-    return words
+    out = []
+    for word in words:
+        if word.startswith('//') and word != '//':
+            out.append('$UNK-URL')
+            continue
+        out.append(word)
+    
+    return out
 
 
 def truncate_and_pad(paragraph: Paragraph, max_length: int) -> Paragraph:
@@ -57,20 +75,27 @@ def truncate_and_pad(paragraph: Paragraph, max_length: int) -> Paragraph:
 def make_vocab_mapping(x: List[Paragraph],
                        max_vocab_size: Optional[int] = None) -> Dict[str, WordId]:
     freqs = Counter()  # type: Counter[str]
+    words_set = set()
     for paragraph in x:
         for word in paragraph:
-            freqs[word] = freqs.get(word, 0)
+            freqs[word] = freqs.get(word, 0) + 1
+            words_set.add(word)
     out = {'$UNK': 0}
     count = 1
     if max_vocab_size is None:
         max_vocab_size = len(freqs)
     print("Actual vocab size: {}".format(len(freqs)))
     for key, num in freqs.most_common(max_vocab_size - 1):
-        if num == 1:
-            continue
+        #if num == 1:
+        #    continue
 
         out[key] = count
         count += 1
+    with open("unks.txt", "w") as stream:
+        for word in words_set:
+            if word not in out:
+                stream.write(word)
+                stream.write("\n")
     return out
 
 def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> List[WordId]:
@@ -349,6 +374,14 @@ class RnnClassifier(Model[str]):
                     #forwards_cell = tf.contrib.rnn.GRUCell(self.n_hidden_layers)
                     #backwards_cell = tf.contrib.rnn.GRUCell(self.n_hidden_layers)
 
+                    forwards_cells = [tf.contrib.rnn.DropoutWrapper(
+                            tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers),
+                            input_keep_prob=self.input_keep,
+                            output_keep_prob=self.output_keep) for i in range(2)]
+                    backwards_cells = [tf.contrib.rnn.DropoutWrapper(
+                            tf.contrib.rnn.BasicLSTMCell(self.n_hidden_layers),
+                            input_keep_prob=self.input_keep,
+                            output_keep_prob=self.output_keep) for i in range(2)]
                     '''
                     outputs, _ = tf.nn.bidirectional_dynamic_rnn(
                             forwards_cell,
@@ -367,6 +400,8 @@ class RnnClassifier(Model[str]):
                     '''
 
                     outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
+                            #tf.contrib.rnn.MultiRNNCell(forwards_cells),
+                            #tf.contrib.rnn.MultiRNNCell(backwards_cells),
                             forwards_cell,
                             backwards_cell,
                             layer,
