@@ -2,6 +2,7 @@ from typing import List, Tuple, Optional, Dict, cast
 import os.path
 import shutil
 import json
+import random
 import time  # type: ignore
 from collections import Counter
 
@@ -45,11 +46,11 @@ def make_vocab_mapping(x: List[Paragraph],
     freqs = Counter()  # type: Counter[str]
     for paragraph in x:
         for word in paragraph:
-            freqs[word] = freqs.get(word, 0)
+            freqs[word] += 1
     out = {'$UNK': 0}
     count = 1
     if max_vocab_size is None:
-        max_vocab_size = len(freqs)
+        max_vocab_size = len(freqs) + 1
     print("Actual vocab size: {}".format(len(freqs)))
     for key, num in freqs.most_common(max_vocab_size - 1):
         if num == 1:
@@ -69,28 +70,28 @@ class RnnCharClassifier(Model[str]):
     '''
     RNN classifier
 
-    --comment_size [int; default=100]
+    --comment_size [int; default=500]
         How long to cap the length of each comment (padding if
         the comment is shorter)
 
-    --batch_size [int; default=125]
+    --batch_size [int; default=100]
 
     --epoch_size [int; default=10]
 
     --n_hidden_layers [int; default=120]
 
-    --vocab_size [int; default=141000]
+    --vocab_size [int; default=100]
 
     --embedding_size [int; default=32]
     '''
     def __init__(self, restore_from: Optional[str] = None,
-                       run_num: Optional[int]=None,
-                       comment_size: int = 100,
-                       batch_size: int = 125,
+                       run_num: Optional[int] = None,
+                       comment_size: int = 500,
+                       batch_size: int = 100,
                        epoch_size: int = 10,
                        n_hidden_layers: int = 120,
-                       vocab_size: int = 141000,
-                       embedding_size: int = 32,
+                       vocab_size: int = 100,
+                       embedding_size: int = 32,  # unused; remove?
                        n_classes: int = 2,
                        input_keep_prob: float = 1.0,
                        output_keep_prob: float = 1.0) -> None:
@@ -127,10 +128,10 @@ class RnnCharClassifier(Model[str]):
 
         self.vocab_map = None   # type: Optional[Dict[str, WordId]]
 
+        super().__init__(restore_from, run_num)
+
         if restore_from is None:
             self._build_model()
-
-        super().__init__(restore_from, run_num)
 
     def _assert_all_setup(self) -> None:
         assert self.x_input is not None
@@ -211,19 +212,20 @@ class RnnCharClassifier(Model[str]):
 
     def _build_model(self) -> None:
         '''Builds the model, using the currently set params.'''
-        with tf.name_scope('rnn-classifier'):
-            self._build_input()
-            self._build_predictor()
-            self._build_evaluator()
+        with tf.device("/gpu:0"):
+            with tf.name_scope('rnn-classifier'):
+                self._build_input()
+                self._build_predictor()
+                self._build_evaluator()
 
-            print('output_shape', self.output.shape)
+                print('output_shape', self.output.shape)
 
-            self.summary = tf.summary.merge_all()
-            self.logger = tf.summary.FileWriter(self._get_log_dir(), graph=tf.get_default_graph())
-            self.init = tf.global_variables_initializer()
+                self.summary = tf.summary.merge_all()
+                self.logger = tf.summary.FileWriter(self._get_log_dir(), graph=tf.get_default_graph())
+                self.init = tf.global_variables_initializer()
 
-        #self.session = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-        self.session = tf.Session()
+            self.session = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+            # self.session = tf.Session()
 
     def _build_input(self) -> None:
         with tf.name_scope('inputs'):
@@ -240,50 +242,50 @@ class RnnCharClassifier(Model[str]):
                     shape=(None,),
                     name='x_lengths')
             self.input_keep = tf.placeholder(
-                    tf.float64,
+                    tf.float32,
                     shape=tuple(),
                     name='input_keep')
             self.output_keep = tf.placeholder(
-                    tf.float64,
+                    tf.float32,
                     shape=tuple(),
                     name='output_keep')
             self.y_hot = tf.one_hot(
                     self.y_input,
                     depth=self.n_classes,
-                    on_value=tf.constant(1.0, dtype=tf.float64),
-                    off_value=tf.constant(0.0, dtype=tf.float64),
-                    dtype=tf.float64,
+                    on_value=tf.constant(1.0, dtype=tf.float32),
+                    off_value=tf.constant(0.0, dtype=tf.float32),
+                    dtype=tf.float32,
                     name='y_hot_encoded')
             print('y_hot_shape', self.y_hot.shape)
 
     def _build_predictor(self) -> None:
         with tf.name_scope('prediction'):
-            # Make embedding vector for words
-            # Shape is [?, vocab_size, embedding_size]
-            embedding = tf.Variable(
-                    tf.random_uniform([self.vocab_size, self.embedding_size], -1.0, 1.0, dtype=tf.float64),
-                    dtype=tf.float64,
-                    name="embedding")
-            word_vectors = tf.nn.embedding_lookup(embedding, self.x_input)
+            # Make one-hot vector for chars
+            print("making one_hot")
+            x_hot = tf.one_hot(self.x_input, self.vocab_size, name="x_hot", dtype=tf.float32)
 
-            #self.predictor = self._make_bidirectional_rnn(word_vectors)
-            self.predictor = self._make_bidirectional_rnn(self.x_input)
+            print("making predictor")
+            self.predictor = self._make_bidirectional_rnn(x_hot)
+            print("making loss")
             self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
                     logits=self.predictor, 
                     labels=self.y_hot),
                     name='loss')
+            print("making optimizer")
             self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
 
             tf.summary.scalar('loss', self.loss)
 
     def _build_evaluator(self) -> None:
         with tf.name_scope('evaluation'):
+            print("making evaluator")
             correct_prediction = tf.equal(
                     tf.argmax(self.predictor, 1), 
                     tf.argmax(self.y_hot, 1))
             accuracy = tf.reduce_mean(
-                    tf.cast(correct_prediction, tf.float64),
+                    tf.cast(correct_prediction, tf.float32),
                     name='accuracy')
+            print("making outputs")
             self.output = tf.argmax(self.predictor, 1, name='output')
             self.output_prob = tf.nn.softmax(self.predictor, name='output_prob')
 
@@ -293,15 +295,15 @@ class RnnCharClassifier(Model[str]):
         with tf.name_scope('bidirectional_rnn'):
             # Convert shape of [?, comment_size, embedding_size] into
             # a list of [?, embedding_size]
-            #x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
-            x_unstacked = word_vectors
+            x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
+            # x_unstacked = word_vectors
             output_weight = tf.Variable(
-                    tf.random_normal([self.n_hidden_layers * 2, self.n_classes], dtype=tf.float64),
-                    dtype=tf.float64,
+                    tf.random_normal([self.n_hidden_layers * 2, self.n_classes], dtype=tf.float32),
+                    dtype=tf.float32,
                     name='output_weight')
             output_bias = tf.Variable(
-                    tf.random_normal([self.n_classes], dtype=tf.float64),
-                    dtype=tf.float64,
+                    tf.random_normal([self.n_classes], dtype=tf.float32),
+                    dtype=tf.float32,
                     name='output_bias')
 
 
@@ -327,7 +329,7 @@ class RnnCharClassifier(Model[str]):
                             #x_unstacked,
                             inputs=word_vectors,
                             sequence_length=self.x_lengths,
-                            dtype=tf.float64)
+                            dtype=tf.float32)
                     
                     # Need to connect outputs
                     outputs = tf.concat(outputs, 2)
@@ -337,11 +339,11 @@ class RnnCharClassifier(Model[str]):
                     prediction = tf.matmul(last_output, output_weight) + output_bias
                     '''
 
-                    outputs, _ = tf.contrib.rnn.static_bidirectional_rnn(
+                    outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
                             forwards_cell,
                             backwards_cell,
                             layer,
-                            dtype=tf.float64,
+                            dtype=tf.float32,
                             scope='bidirectional_rnn_{}'.format(i))
                     layer = outputs
 
@@ -368,9 +370,14 @@ class RnnCharClassifier(Model[str]):
 
         self.session.run(self.init)
         for i in range(self.epoch_size):
-            self.train_epoch(i, n_batches, x_lengths, x_final, ys)
+            indices = list(range(len(x_final)))
+            random.shuffle(indices)
+            x_lengths_new = [x_lengths[i] for i in indices]
+            x_final_new = [x_final[i] for i in indices]
+            ys_new = [ys[i] for i in indices]
+            self.train_epoch(i, n_batches, x_lengths_new, x_final_new, ys_new)
 
-    def train_epoch(self, iteration: int,
+    def train_epoch(self, epoch: int,
                           n_batches: int, 
                           x_lengths: List[int],
                           xs: List[List[int]], 
@@ -396,25 +403,44 @@ class RnnCharClassifier(Model[str]):
 
             self.session.run(self.optimizer, feed_dict=batch_data)
 
-        # Report results, using last x_batch and y_batch
-        summary_data, batch_loss = self.session.run(
-                [self.summary, self.loss], 
-                feed_dict=batch_data)
+            # Report results, using last x_batch and y_batch
+            summary_data, batch_loss = self.session.run(
+                    [self.summary, self.loss], 
+                    feed_dict=batch_data)
 
-        self.logger.add_summary(summary_data, iteration)
+            self.logger.add_summary(summary_data, batch_num + n_batches * epoch)
         delta = time.time() - start 
-        print("Iteration {}, last batch loss = {:.6f}, time elapsed = {:.3f}".format(iteration, batch_loss, delta))
+        print("Epoch {}, last batch loss = {:.6f}, time elapsed = {:.3f}".format(epoch, batch_loss, delta))
 
     def predict(self, xs: List[str]) -> List[List[float]]:
         assert self.vocab_map is not None
         x_data_raw = [truncate_and_pad(list(x), self.comment_size) for x in xs]
         x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
-        batch_data = {
-                self.x_input: x_final, 
-                self.x_lengths: x_lengths,
-                self.input_keep: 1.0,
-                self.output_keep: 1.0,
-        }
-        return cast(List[List[float]], self.session.run(self.output_prob, feed_dict=batch_data))
+        # batch_data = {
+        #         self.x_input: x_final, 
+        #         self.x_lengths: x_lengths,
+        #         self.input_keep: 1.0,
+        #         self.output_keep: 1.0,
+        # }
+        predictions = np.empty((len(xs), 2), dtype=np.float32)
+        n_batches = len(x_final) // self.batch_size
+        for batch_num in range(n_batches):
+            start_idx = batch_num * self.batch_size
+            end_idx = (batch_num + 1) * self.batch_size
 
+            x_batch = x_final[start_idx: end_idx]
+            x_len_batch = x_lengths[start_idx: end_idx]
+
+            batch_data = {
+                    self.x_lengths: x_len_batch,
+                    self.x_input: x_batch,
+                    self.input_keep: self.input_keep_prob,
+                    self.output_keep: self.output_keep_prob,
+            }
+
+            predictions[batch_num*self.batch_size:(batch_num+1)*self.batch_size] = \
+                    self.session.run(self.output_prob, feed_dict=batch_data)
+        return cast(List[List[float]], predictions)
+        # return cast(List[List[float]], self.session.run(self.output_prob, feed_dict=batch_data))
+# predict in batches, shuffle between epochs
