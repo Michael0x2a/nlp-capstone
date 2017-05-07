@@ -24,7 +24,7 @@ class ProfanityFilterClassifier(Model[str]):
     # Core methods that must be implemented
     def __init__(self, restore_from: Optional[str] = None,
                        run_num: Optional[int]=None) -> None:
-        super.__init__()
+        super().__init__(restore_from, run_num)
 
     def _get_parameters(self) -> Dict[str, Any]:
         return {}
