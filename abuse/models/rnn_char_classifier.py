@@ -94,7 +94,9 @@ class RnnCharClassifier(Model[str]):
                        embedding_size: int = 32,  # unused; remove?
                        n_classes: int = 2,
                        input_keep_prob: float = 1.0,
-                       output_keep_prob: float = 1.0) -> None:
+                       output_keep_prob: float = 1.0,
+                       conv_size: int = 5,
+                       conv_layers: int = 32) -> None:
 
         # Hyperparameters
         self.comment_size = comment_size
@@ -106,6 +108,8 @@ class RnnCharClassifier(Model[str]):
         self.n_classes = n_classes
         self.input_keep_prob = input_keep_prob
         self.output_keep_prob = output_keep_prob
+        self.conv_size = conv_size
+        self.conv_layers = conv_layers
 
         # Particular tensorflow nodes worth keeping a reference to
         # Types are set to Any because mypy doesn't yet understand
@@ -161,6 +165,8 @@ class RnnCharClassifier(Model[str]):
                 'n_classes': self.n_classes,
                 'input_keep_prob': self.input_keep_prob,
                 'output_keep_prob': self.output_keep_prob,
+                'conv_layers': self.conv_layers,
+                'conv_size': self.conv_size
         }
 
     def _save_model(self, path: str) -> None:
@@ -249,13 +255,14 @@ class RnnCharClassifier(Model[str]):
                     tf.float32,
                     shape=tuple(),
                     name='output_keep')
-            self.y_hot = tf.one_hot(
-                    self.y_input,
-                    depth=self.n_classes,
-                    on_value=tf.constant(1.0, dtype=tf.float32),
-                    off_value=tf.constant(0.0, dtype=tf.float32),
-                    dtype=tf.float32,
-                    name='y_hot_encoded')
+            # self.y_hot = tf.one_hot(
+            #         self.y_input,
+            #         depth=self.n_classes,
+            #         on_value=tf.constant(1.0, dtype=tf.float32),
+            #         off_value=tf.constant(0.0, dtype=tf.float32),
+            #         dtype=tf.float32,
+            #         name='y_hot_encoded')
+            self.y_hot = tf.cast(self.y_input, tf.float32, name="y_hot_encoded")
             print('y_hot_shape', self.y_hot.shape)
 
     def _build_predictor(self) -> None:
@@ -267,9 +274,14 @@ class RnnCharClassifier(Model[str]):
             print("making predictor")
             self.predictor = self._make_bidirectional_rnn(x_hot)
             print("making loss")
-            self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-                    logits=self.predictor, 
-                    labels=self.y_hot),
+            # self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+            #         logits=self.predictor, 
+            #         labels=self.y_hot),
+            #         name='loss')
+            self.loss = tf.reduce_mean(tf.nn.weighted_cross_entropy_with_logits(
+                    logits=self.predictor,
+                    targets=tf.to_float(self.y_hot),
+                    pos_weight=1),
                     name='loss')
             print("making optimizer")
             self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
@@ -279,15 +291,18 @@ class RnnCharClassifier(Model[str]):
     def _build_evaluator(self) -> None:
         with tf.name_scope('evaluation'):
             print("making evaluator")
-            correct_prediction = tf.equal(
-                    tf.argmax(self.predictor, 1), 
-                    tf.argmax(self.y_hot, 1))
+            # correct_prediction = tf.equal(
+            #         tf.argmax(self.predictor, 1), 
+            #         tf.argmax(self.y_hot, 1))
+            correct_prediction = tf.equal(self.predictor, self.y_hot)
             accuracy = tf.reduce_mean(
                     tf.cast(correct_prediction, tf.float32),
                     name='accuracy')
             print("making outputs")
-            self.output = tf.argmax(self.predictor, 1, name='output')
-            self.output_prob = tf.nn.softmax(self.predictor, name='output_prob')
+            # self.output = tf.argmax(self.predictor, 1, name='output')
+            self.output = self.predictor
+            # self.output_prob = tf.nn.softmax(self.predictor, name='output_prob')
+            self.output_prob = self.predictor
 
             tf.summary.scalar('batch-accuracy', accuracy)
 
@@ -298,11 +313,11 @@ class RnnCharClassifier(Model[str]):
             x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
             # x_unstacked = word_vectors
             output_weight = tf.Variable(
-                    tf.random_normal([self.n_hidden_layers * 2, self.n_classes], dtype=tf.float32),
+                    tf.random_normal([self.conv_layers, 1], dtype=tf.float32),  #, self.n_classes
                     dtype=tf.float32,
                     name='output_weight')
             output_bias = tf.Variable(
-                    tf.random_normal([self.n_classes], dtype=tf.float32),
+                    tf.random_normal([1], dtype=tf.float32),  #self.n_classes
                     dtype=tf.float32,
                     name='output_bias')
 
@@ -348,10 +363,15 @@ class RnnCharClassifier(Model[str]):
                     layer = outputs
 
             # This is an abuse of scope, but whatever.
-            
-            # Use the output of the last rnn cell for classification
-            prediction = tf.matmul(outputs[-1], output_weight) + output_bias
-            return prediction
+
+            conv = tf.layers.conv1d(tf.stack(outputs, axis=1),
+                                    self.conv_layers,
+                                    self.conv_size)
+            maxp = tf.squeeze(tf.layers.max_pooling1d(conv, self.comment_size-self.conv_size+1, 1))  # max over all
+
+            # Use the output of the convolution
+            prediction = tf.matmul(maxp, output_weight) + output_bias
+            return tf.squeeze(prediction)
 
     def train(self, xs: List[str], ys: List[int], **params: Any) -> None:
         '''Trains the model. The expectation is that this method is called
@@ -439,8 +459,10 @@ class RnnCharClassifier(Model[str]):
                     self.output_keep: self.output_keep_prob,
             }
 
-            predictions[batch_num*self.batch_size:(batch_num+1)*self.batch_size] = \
-                    self.session.run(self.output_prob, feed_dict=batch_data)
+            batch_predictions = self.session.run(self.output_prob, feed_dict=batch_data)
+
+            predictions[batch_num*self.batch_size:(batch_num+1)*self.batch_size, 0] = 1 - batch_predictions
+            predictions[batch_num*self.batch_size:(batch_num+1)*self.batch_size, 1] = batch_predictions
         return cast(List[List[float]], predictions)
         # return cast(List[List[float]], self.session.run(self.output_prob, feed_dict=batch_data))
 # predict in batches, shuffle between epochs
