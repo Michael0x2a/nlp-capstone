@@ -87,14 +87,14 @@ class RnnCharClassifier(Model[str]):
     def __init__(self, restore_from: Optional[str] = None,
                        run_num: Optional[int] = None,
                        comment_size: int = 500,
-                       batch_size: int = 100,
-                       epoch_size: int = 10,
-                       n_hidden_layers: int = 120,
+                       batch_size: int = 200,
+                       epoch_size: int = 30,
+                       n_hidden_layers: int = 120,  # decrease?
                        vocab_size: int = 100,
                        embedding_size: int = 32,  # unused; remove?
                        n_classes: int = 2,
-                       input_keep_prob: float = 1.0,
-                       output_keep_prob: float = 1.0,
+                       input_keep_prob: float = 0.8,
+                       output_keep_prob: float = 0.8,
                        conv_size: int = 5,
                        conv_layers: int = 32) -> None:
 
