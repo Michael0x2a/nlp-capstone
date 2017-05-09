@@ -195,7 +195,7 @@ class RnnCharClassifier(Model[str]):
         with open(fmanip.join(path, 'vocab_map.json'), 'r') as stream:
             self.vocab_map = json.load(stream)
 
-        self.session = tf.Session()
+        self.session = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
         saver = tf.train.import_meta_graph(fmanip.join(path, 'tensorflow_graph.meta'))
         saver.restore(self.session, fmanip.join(path, 'model'))
 
@@ -291,18 +291,18 @@ class RnnCharClassifier(Model[str]):
     def _build_evaluator(self) -> None:
         with tf.name_scope('evaluation'):
             print("making evaluator")
+            # self.output = tf.argmax(self.predictor, 1, name='output')
+            self.output = tf.greater(self.predictor, 0, name='output')
             # correct_prediction = tf.equal(
             #         tf.argmax(self.predictor, 1), 
             #         tf.argmax(self.y_hot, 1))
-            correct_prediction = tf.equal(self.predictor, self.y_hot)
+            correct_prediction = tf.equal(self.output, self.y_hot)
             accuracy = tf.reduce_mean(
                     tf.cast(correct_prediction, tf.float32),
                     name='accuracy')
             print("making outputs")
-            # self.output = tf.argmax(self.predictor, 1, name='output')
-            self.output = self.predictor
             # self.output_prob = tf.nn.softmax(self.predictor, name='output_prob')
-            self.output_prob = self.predictor
+            self.output_prob = tf.sigmoid(self.predictor, name='output_prob')
 
             tf.summary.scalar('batch-accuracy', accuracy)
 
