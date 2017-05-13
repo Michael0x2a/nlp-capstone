@@ -367,7 +367,7 @@ class RnnCharClassifier(Model[str]):
             conv = tf.layers.conv1d(tf.stack(outputs, axis=1),
                                     self.conv_layers,
                                     self.conv_size)
-            maxp = tf.squeeze(tf.layers.max_pooling1d(conv, self.comment_size-self.conv_size+1, 1))  # max over all
+            maxp = tf.squeeze(tf.layers.max_pooling1d(conv, self.comment_size-self.conv_size+1, 1), axis=1)  # max over all
 
             # Use the output of the convolution
             prediction = tf.matmul(maxp, output_weight) + output_bias
@@ -384,7 +384,7 @@ class RnnCharClassifier(Model[str]):
         self.vocab_map = make_vocab_mapping(x_data_raw, self.vocab_size)
         x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
 
-        n_batches = len(x_final) // self.batch_size
+        n_batches = ceil(len(x_final) / self.batch_size)
 
         self._assert_all_setup()
 
@@ -444,7 +444,7 @@ class RnnCharClassifier(Model[str]):
         #         self.output_keep: 1.0,
         # }
         predictions = np.empty((len(xs), 2), dtype=np.float32)
-        n_batches = len(x_final) // self.batch_size
+        n_batches = ceil(len(x_final) / self.batch_size)
         for batch_num in range(n_batches):
             start_idx = batch_num * self.batch_size
             end_idx = (batch_num + 1) * self.batch_size
