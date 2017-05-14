@@ -98,6 +98,7 @@ class RnnCharClassifier(Model[str]):
                        output_keep_prob: float = 0.9,
                        conv_size: int = 5,
                        conv_layers: int = 32,
+                       pos_weight: float=1,
                        learning_rate: float = 0.001,
                        beta1: float = 0.9,
                        beta2: float = 0.999,
@@ -115,6 +116,7 @@ class RnnCharClassifier(Model[str]):
         self.output_keep_prob = output_keep_prob
         self.conv_size = conv_size
         self.conv_layers = conv_layers
+        self.pos_weight = pos_weight
         self.learning_rate = learning_rate
         self.beta1 = beta1
         self.beta2 = beta2
@@ -176,6 +178,7 @@ class RnnCharClassifier(Model[str]):
                 'output_keep_prob': self.output_keep_prob,
                 'conv_layers': self.conv_layers,
                 'conv_size': self.conv_size,
+                "pos_weight": self.pos_weight,
                 'learning_rate': self.learning_rate,
                 'beta1': self.beta1,
                 'beta2': self.beta2,
@@ -294,7 +297,7 @@ class RnnCharClassifier(Model[str]):
             self.loss = tf.reduce_mean(tf.nn.weighted_cross_entropy_with_logits(
                     logits=self.predictor,
                     targets=self.y_hot,
-                    pos_weight=1),
+                    pos_weight=self.pos_weight),
                     name='loss')
             print("making optimizer")
             self.optimizer = tf.train.AdamOptimizer(
