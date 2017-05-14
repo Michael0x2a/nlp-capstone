@@ -97,7 +97,11 @@ class RnnCharClassifier(Model[str]):
                        input_keep_prob: float = 0.8,
                        output_keep_prob: float = 0.8,
                        conv_size: int = 5,
-                       conv_layers: int = 32) -> None:
+                       conv_layers: int = 32,
+                       learning_rate: float = 0.001,
+                       beta1: float = 0.9,
+                       beta2: float = 0.999,
+                       epsilon: float = 1e-08) -> None:
 
         # Hyperparameters
         self.comment_size = comment_size
@@ -111,6 +115,10 @@ class RnnCharClassifier(Model[str]):
         self.output_keep_prob = output_keep_prob
         self.conv_size = conv_size
         self.conv_layers = conv_layers
+        self.learning_rate = learning_rate
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
 
         # Particular tensorflow nodes worth keeping a reference to
         # Types are set to Any because mypy doesn't yet understand
@@ -167,7 +175,11 @@ class RnnCharClassifier(Model[str]):
                 'input_keep_prob': self.input_keep_prob,
                 'output_keep_prob': self.output_keep_prob,
                 'conv_layers': self.conv_layers,
-                'conv_size': self.conv_size
+                'conv_size': self.conv_size,
+                'learning_rate': self.learning_rate,
+                'beta1': self.beta1,
+                'beta2': self.beta2,
+                'epsilon': self.epsilon,
         }
 
     def _save_model(self, path: str) -> None:
@@ -285,7 +297,11 @@ class RnnCharClassifier(Model[str]):
                     pos_weight=1),
                     name='loss')
             print("making optimizer")
-            self.optimizer = tf.train.AdamOptimizer().minimize(self.loss)
+            self.optimizer = tf.train.AdamOptimizer(
+                    learning_rate=self.learning_rate,
+                    beta1=self.beta1,
+                    beta2=self.beta2,
+                    epsilon=self.epsilon).minimize(self.loss)
 
             tf.summary.scalar('loss', self.loss)
 
