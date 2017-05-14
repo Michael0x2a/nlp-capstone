@@ -94,8 +94,8 @@ class RnnCharClassifier(Model[str]):
                        vocab_size: int = 100,
                        embedding_size: int = 32,  # unused; remove?
                        n_classes: int = 2,
-                       input_keep_prob: float = 0.8,
-                       output_keep_prob: float = 0.8,
+                       input_keep_prob: float = 0.9,
+                       output_keep_prob: float = 0.9,
                        conv_size: int = 5,
                        conv_layers: int = 32,
                        learning_rate: float = 0.001,
