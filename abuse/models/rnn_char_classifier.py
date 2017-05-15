@@ -98,6 +98,7 @@ class RnnCharClassifier(Model[str]):
                        output_keep_prob: float = 0.9,
                        conv_size: int = 5,
                        conv_layers: int = 32,
+                       double_conv: bool = False,
                        pos_weight: float=1,
                        learning_rate: float = 0.001,
                        beta1: float = 0.9,
@@ -116,6 +117,7 @@ class RnnCharClassifier(Model[str]):
         self.output_keep_prob = output_keep_prob
         self.conv_size = conv_size
         self.conv_layers = conv_layers
+        self.double_conv = double_conv
         self.pos_weight = pos_weight
         self.learning_rate = learning_rate
         self.beta1 = beta1
@@ -178,6 +180,7 @@ class RnnCharClassifier(Model[str]):
                 'output_keep_prob': self.output_keep_prob,
                 'conv_layers': self.conv_layers,
                 'conv_size': self.conv_size,
+                'double_conv': self.double_conv,
                 "pos_weight": self.pos_weight,
                 'learning_rate': self.learning_rate,
                 'beta1': self.beta1,
@@ -387,18 +390,34 @@ class RnnCharClassifier(Model[str]):
             conv = tf.layers.conv1d(tf.stack(outputs, axis=1),
                                     self.conv_layers,
                                     self.conv_size)
-            maxp = tf.squeeze(tf.layers.max_pooling1d(
-                    conv,
-                    self.comment_size-self.conv_size+1,
-                    1), axis=1)  # max over all
-            avgp = tf.squeeze(tf.layers.average_pooling1d(
-                    conv,
-                    self.comment_size-self.conv_size+1,
-                    1), axis=1)  # avg over all
-            both = tf.concat([maxp, avgp], axis=1)
+            if self.double_conv:
+                maxp = tf.layers.max_pooling1d(conv, 2, 2)
+                conv2max = tf.layers.conv1d(maxp, self.conv_layers, self.conv_size)
+                maxp2 = tf.squeeze(tf.layers.max_pooling1d(
+                        conv2max,
+                        ceil((self.comment_size-self.conv_size+1)/2) - self.conv_size + 1,
+                        1), axis=1)  # max over all
+
+                avgp = tf.layers.average_pooling1d(conv, 2, 2)
+                conv2avg = tf.layers.conv1d(avgp, self.conv_layers, self.conv_size)
+                avgp2 = tf.squeeze(tf.layers.max_pooling1d(
+                        conv2max,
+                        ceil((self.comment_size-self.conv_size+1)/2) - self.conv_size + 1,
+                        1), axis=1)  # avg over all
+                final = tf.concat([maxp2, avgp2], axis=1)
+            else:
+                maxp = tf.squeeze(tf.layers.max_pooling1d(
+                        conv,
+                        self.comment_size-self.conv_size+1,
+                        1), axis=1)  # max over all
+                avgp = tf.squeeze(tf.layers.average_pooling1d(
+                        conv,
+                        self.comment_size-self.conv_size+1,
+                        1), axis=1)  # avg over all
+                final = tf.concat([maxp, avgp], axis=1)
 
             # Use the output of the convolution
-            prediction = tf.matmul(both, output_weight) + output_bias
+            prediction = tf.matmul(final, output_weight) + output_bias
             return tf.squeeze(prediction)
 
     def train(self, xs: List[str], ys: List[int], **params: Any) -> None:
