@@ -61,10 +61,10 @@ class BinaryClassificationMetrics:
         y_predicted = np.argmax(y_predicted_prob, 1)
 
         self.accuracy = metrics.accuracy_score(y_expected, y_predicted)
-        self.precision = metrics.precision_score(y_expected, y_predicted, average='macro')
-        self.recall = metrics.recall_score(y_expected, y_predicted, average='macro')
-        self.f1 = metrics.f1_score(y_expected, y_predicted, average='macro')
-        self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='macro')
+        self.precision = metrics.precision_score(y_expected, y_predicted, average='binary')
+        self.recall = metrics.recall_score(y_expected, y_predicted, average='binary')
+        self.f1 = metrics.f1_score(y_expected, y_predicted, average='binary')
+        self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='binary')
         self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
         self.fpr, self.tpr, self.thr = metrics.roc_curve(
@@ -72,7 +72,7 @@ class BinaryClassificationMetrics:
                 y_predicted_prob[:,1])
 
     def to_table_row(self) -> str:
-        return "| {:.6f} | {:.6f} | {:.6f} | {:.6f} | {:.6f} | {:.6f} |".format(
+        return "| {:.4f} | {:.4f} | {:.4f} | {:.4f} | {:.4f} | {:.4f} |".format(
                 self.accuracy,
                 self.precision,
                 self.recall,
