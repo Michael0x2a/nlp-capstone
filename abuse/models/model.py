@@ -81,8 +81,8 @@ class BinaryClassificationMetrics:
                 self.spearman)
 
     def get_header(self) -> str:
-        return ("| Accuracy | Precision | Recall | F1 | ROC | Spearman |\n" +
-                "| -------- | --------- | ------ | -- | --- | -------- |")
+        return ("| Accuracy | Precision | Recall | F1     | ROC    | Spearman |\n" +
+                "| -------- | --------- | ------ | ------ | ------ | -------- |")
 
     def make_roc_curve(self, save_path: str=None) -> Tuple[List[float], List[float], List[float]]:
         plt.plot(self.fpr, self.tpr)
