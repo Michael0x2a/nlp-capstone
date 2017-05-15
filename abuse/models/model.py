@@ -64,7 +64,7 @@ class BinaryClassificationMetrics:
         self.precision = metrics.precision_score(y_expected, y_predicted, average='binary')
         self.recall = metrics.recall_score(y_expected, y_predicted, average='binary')
         self.f1 = metrics.f1_score(y_expected, y_predicted, average='binary')
-        self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='binary')
+        self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='macro')
         self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
         self.fpr, self.tpr, self.thr = metrics.roc_curve(
