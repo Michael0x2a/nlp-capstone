@@ -3,7 +3,7 @@ not using any command line libraries and am just manually
 munging sys.argv. This is more out of laziness more then
 anything.'''
 
-from typing import Tuple, Dict, Any, Union, List
+from typing import Tuple, Dict, Any, Union, List, TypeVar, cast
 if False:  # Hack to support Python 3.5.1
     from typing import Type
 import sys
@@ -118,26 +118,17 @@ def main() -> None:
         should_reload = restore_path is not None
         restore_num = None
 
-    save_path = info.model_params.get('save_to', None)
-    if save_path is not None:
-        del info.model_params['save_to']
-    if 'save' in info.model_params:
-        should_save = info.model_params['save']
-        del info.model_params['save']
-    else:
-        should_save = save_path is not None
-
-    if 'save_analysis' in info.model_params:
-        save_analysis = info.model_params['save_analysis']
-        del info.model_params['save_analysis']
-    else:
-        save_analysis = False
+    # Extract some special metaparameters
+    save_path = extract_special(info.model_params, 'save_to', None)
+    should_save = extract_special(info.model_params, 'save', save_path is not None)
+    save_analysis = extract_special(info.model_params, 'save_analysis', False)
+    split = extract_special(info.dataset_params, 'split', 0.5)
 
     # Ok, go
     print("Loading {} data...".format(info.dataset_name))
     (train_x, train_y_soft), (test_x, test_y_soft) = dataset_func(**info.dataset_params)  # type: ignore
-    train_y = [int(foo > 0.5) for foo in train_y_soft]
-    test_y = [int(foo > 0.5) for foo in test_y_soft]
+    train_y = [int(foo > split) for foo in train_y_soft]
+    test_y = [int(foo > split) for foo in test_y_soft]
 
     if should_reload:
         print("Loading saved model from {}...".format(restore_path))
@@ -185,6 +176,15 @@ def main() -> None:
         error_analysis.save_errors()
 
     print()
+
+
+def extract_special(mapping: Dict[str, Any], name: str, default: Any) -> Any:
+    if name in mapping:
+        out = mapping[name]
+        del mapping[name]
+        return out
+    else:
+        return default
 
 
 def verify_choice(name: str, choices: Dict[str, Any], choice: str) -> None:
