@@ -72,13 +72,14 @@ class BinaryClassificationMetrics:
                 y_predicted_prob[:,1])
 
     def to_table_row(self) -> str:
-        return "| {:.4f} | {:.4f} | {:.4f} | {:.4f} | {:.4f} | {:.4f} |".format(
+        return "| {:.4f}   | {:.4f}    | {:.4f} | {:.4f} | {:.4f} | {:.4f}   |".format(
                 self.accuracy,
                 self.precision,
                 self.recall,
                 self.f1,
                 self.roc_auc,
                 self.spearman)
+
 
     def get_header(self) -> str:
         return ("| Accuracy | Precision | Recall | F1     | ROC    | Spearman |\n" +
