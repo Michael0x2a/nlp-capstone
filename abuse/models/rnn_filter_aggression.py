@@ -44,16 +44,25 @@ def main() -> None:
 
     # Train aggression classifier (naive, for now)
     #print("Loading aggression classifier")
-    #aggression_clf = BagOfWordsClassifier.restore_from_saved(
-    #        fmanip.join("core_models", "aggression_bag_of_words"))
 
     # Make autoencoder model
 
     fmanip.delete_folder(log_dir)
 
+    # Train 
+    (x_train, y_train), (x_test, y_test) = get_wikipedia_data(
+            'attack', 
+            'attack',
+            use_small=params['use_small'])
+    y_train_hard = [int(foo > 0.5) for foo in y_train]
+    attack_clf = BagOfWordsClassifier()
+    attack_clf.train(x_train, y_train_hard)
+    print("Done training bag of words")
+
+    x_final, x_lengths_orig, vocab_map, inv_vocab_map = prep_dataset(x_train, params)
     with tf.name_scope('rnn-filter-aggression'):
         x_input, x_lengths, input_keep, output_keep, is_train = build_model(params)
-        sequence_loss, outputs, word_ids = build_seq2seq(input_keep, output_keep, x_input, x_lengths, is_train, params)
+        sequence_loss, outputs, word_ids = build_seq2seq(input_keep, output_keep, x_input, x_lengths, is_train, params, attack_clf, inv_vocab_map)
         optimizer = build_optimizer(sequence_loss, params)
 
         summary = tf.summary.merge_all()
@@ -77,20 +86,23 @@ def main() -> None:
                 'session': session,
         }
 
-    # Train 
-    (x_train, y_train), (x_test, y_test) = get_wikipedia_data(
-            'attack', 
-            'attack',
-            use_small=params['use_small'])
-    x_final, x_lengths, vocab_map, inv_vocab_map = prep_dataset(x_train, params)
 
     print("Training")
     params['train'] = True
-    train(x_final, x_lengths, nodes, params)
+    train(x_final, x_lengths_orig, nodes, params)
 
     print("Predicting")
     # Warning: input size must be 100 for now (batch size is fixed; haven't fixed yet)
     # TODO: fix batch size thing
+    
+    interesting = []
+    for i, sentence in enumerate(x_train):
+        if y_train_hard[i]:
+            interesting.append(sentence)
+        if len(interesting) == params['batch_size']:
+            break
+
+
     params['train'] = False
     out = predict(x_train[:params['batch_size']], vocab_map, nodes, params)
     for x, y in zip(x_train[:10], out[:10]):
@@ -102,6 +114,19 @@ def main() -> None:
         print()
         print('-------')
         print()
+    print('INTERESTING:\n')
+
+    out = predict(interesting, vocab_map, nodes, params)
+    for x, y in zip(interesting[:10], out[:10]):
+        print(x)
+        print()
+        print('~~~')
+        print()
+        print(y)
+        print()
+        print('-------')
+        print()
+
 
 def train(x_final: List[List[int]], x_lengths: List[int], nodes: Nodes, params: Params) -> None:
     nodes['session'].run(tf.initialize_all_variables())
@@ -194,7 +219,7 @@ def build_model(params: Params) -> Tuple[Any, ...]:
     return (x_input, x_lengths, input_keep, output_keep, is_train)
 
 
-def build_seq2seq(input_keep: Any, output_keep: Any, x_input: Any, x_lengths: Any, is_train: Any, params: Params) -> Tuple[Any, ...]:
+def build_seq2seq(input_keep: Any, output_keep: Any, x_input: Any, x_lengths: Any, is_train: Any, params: Params, clf: Any, inv_vocab_map) -> Tuple[Any, ...]:
     assert input_keep is not None
     assert output_keep is not None
     assert x_input is not None
@@ -250,11 +275,34 @@ def build_seq2seq(input_keep: Any, output_keep: Any, x_input: Any, x_lengths: An
 
         # Make loss function. Note: we're training an autoencoder, so
         # train and hit the original sentence
-        loss = softmax_xent_loss_sequence(
+        def test(word_ids):
+            out = []
+            for index, line in enumerate(word_ids):
+                toks = [inv_vocab_map.get(i, '$UNK') for i in line]
+
+                new_toks = []
+                for t in toks:
+                    new_toks.append(t)
+                    if t == '$END':
+                        break
+                out.append(' '.join(new_toks))
+            return np.asarray([1 - a for a in clf.predict(out)], dtype=np.float32)
+
+        seq_loss = softmax_xent_loss_sequence(
                 logits=outputs_stacked,
                 targets=x_input,
                 seq_len=x_lengths,
                 max_seq_len=params['comment_size'])
+        agg_loss = tf.reduce_mean(tf.py_func(test, [word_ids], [tf.float32]))
+        print(agg_loss.shape)
+
+        #seqW = tf.Variable(
+        #        tf.random_uniform([], -1.0, 1.0, dtype=tf.float32),
+        #        name='seqW')
+        seqW = 0.6
+        loss = tf.add(tf.multiply(seq_loss, seqW), 
+               tf.multiply(agg_loss, tf.subtract(1.0, seqW)))
+
         tf.summary.scalar("sequence_loss", loss)
 
         return loss, outputs_stacked, word_ids
@@ -334,3 +382,4 @@ def get_wikipedia_data(category: str = None,
 
 if __name__ == '__main__':
     main()
+
