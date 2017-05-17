@@ -5,7 +5,6 @@ import glob
 import sklearn.metrics as metrics  # type: ignore
 import scipy.stats as stats  # type: ignore
 import numpy as np  # type: ignore
-import matplotlib.pyplot as plt  # type: ignore
 
 import utils.file_manip as fmanip
 
@@ -86,6 +85,7 @@ class BinaryClassificationMetrics:
                 "| -------- | --------- | ------ | ------ | ------ | -------- |")
 
     def make_roc_curve(self, save_path: str=None) -> Tuple[List[float], List[float], List[float]]:
+        import matplotlib.pyplot as plt  # type: ignore
         plt.plot(self.fpr, self.tpr)
         plt.xlabel("False positive rate")
         plt.ylabel("True positive rate")
