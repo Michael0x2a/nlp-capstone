@@ -32,12 +32,13 @@ def main() -> None:
             #'vocab_size': 100000,
             'vocab_size': 30000,
             'embedding_size': 64,
-            'n_hidden_layers': 64,
+            'n_hidden_layers': 512,
             'comment_size': 100,
-            'batch_size': 100,
-            'epoch_size': 10,
+            'batch_size': 50,
+            'epoch_size': 20,
             'input_keep': 1.0,
             'output_keep': 0.7,
+            'use_small': True,
     }  # type: Params
     log_dir = 'logs/filter/runx'
 
@@ -51,8 +52,8 @@ def main() -> None:
     fmanip.delete_folder(log_dir)
 
     with tf.name_scope('rnn-filter-aggression'):
-        x_input, x_lengths, input_keep, output_keep = build_model(params)
-        sequence_loss, outputs, word_ids = build_seq2seq(input_keep, output_keep, x_input, x_lengths, params)
+        x_input, x_lengths, input_keep, output_keep, is_train = build_model(params)
+        sequence_loss, outputs, word_ids = build_seq2seq(input_keep, output_keep, x_input, x_lengths, is_train, params)
         optimizer = build_optimizer(sequence_loss, params)
 
         summary = tf.summary.merge_all()
@@ -66,6 +67,7 @@ def main() -> None:
                 'x_lengths': x_lengths,
                 'input_keep': input_keep,
                 'output_keep': output_keep,
+                'is_train': is_train,
                 'sequence_loss': sequence_loss,
                 'outputs': outputs,
                 'word_ids': word_ids,
@@ -77,21 +79,28 @@ def main() -> None:
 
     # Train 
     (x_train, y_train), (x_test, y_test) = get_wikipedia_data(
-            'aggression', 
-            'aggression',
-            use_small=True)
+            'attack', 
+            'attack',
+            use_small=params['use_small'])
     x_final, x_lengths, vocab_map, inv_vocab_map = prep_dataset(x_train, params)
 
     print("Training")
+    params['train'] = True
     train(x_final, x_lengths, nodes, params)
 
     print("Predicting")
     # Warning: input size must be 100 for now (batch size is fixed; haven't fixed yet)
     # TODO: fix batch size thing
-    out = predict(x_train[:100], vocab_map, nodes, params)
+    params['train'] = False
+    out = predict(x_train[:params['batch_size']], vocab_map, nodes, params)
     for x, y in zip(x_train[:10], out[:10]):
         print(x)
+        print()
+        print('~~~')
+        print()
         print(y)
+        print()
+        print('-------')
         print()
 
 def train(x_final: List[List[int]], x_lengths: List[int], nodes: Nodes, params: Params) -> None:
@@ -128,6 +137,7 @@ def train_epoch(iteration: int,
                 nodes['x_lengths']: x_len_batch,
                 nodes['input_keep']: params['input_keep'],
                 nodes['output_keep']: params['output_keep'],
+                nodes['is_train']: True,
         }
 
         s, l, _ = nodes['session'].run(
@@ -148,6 +158,7 @@ def predict(xs: List[str], vocab_map: Dict[str, int], nodes: Nodes, params: Para
             nodes['x_lengths']: x_lengths,
             nodes['input_keep']: 1.0,
             nodes['output_keep']: 1.0,
+            nodes['is_train']: False,
     }
     ids = nodes['session'].run(nodes['word_ids'], feed_dict=batch_data)
     inv_vocab_map = {y: x for (x, y) in vocab_map.items()}
@@ -176,9 +187,14 @@ def build_model(params: Params) -> Tuple[Any, ...]:
                 tf.float32,
                 shape=tuple(),
                 name='output_keep')
-    return (x_input, x_lengths, input_keep, output_keep)
+        is_train = tf.placeholder(
+                tf.bool,
+                shape=tuple(),
+                name='is_train')
+    return (x_input, x_lengths, input_keep, output_keep, is_train)
 
-def build_seq2seq(input_keep: Any, output_keep: Any, x_input: Any, x_lengths: Any, params: Params) -> Tuple[Any, ...]:
+
+def build_seq2seq(input_keep: Any, output_keep: Any, x_input: Any, x_lengths: Any, is_train: Any, params: Params) -> Tuple[Any, ...]:
     assert input_keep is not None
     assert output_keep is not None
     assert x_input is not None
@@ -202,38 +218,38 @@ def build_seq2seq(input_keep: Any, output_keep: Any, x_input: Any, x_lengths: An
 
         # Make RNN
 
-        #cell = tf.contrib.rnn.BasicLSTMCell(params['n_hidden_layers'])
-        cell = tf.contrib.rnn.MultiRNNCell([
-            #tf.contrib.rnn.DropoutWrapper(
-            #    tf.contrib.rnn.BasicLSTMCell(params['n_hidden_layers']),
-            #    input_keep_prob=input_keep,
-            #    output_keep_prob=output_keep),
+        cell = tf.contrib.rnn.BasicLSTMCell(params['n_hidden_layers'])
+        '''cell = tf.contrib.rnn.MultiRNNCell([
             tf.contrib.rnn.DropoutWrapper(
                 tf.contrib.rnn.BasicLSTMCell(params['n_hidden_layers'])),
             tf.contrib.rnn.DropoutWrapper(
                 tf.contrib.rnn.BasicLSTMCell(params['n_hidden_layers'])),
-        ])
-        outputs, states = tf.contrib.legacy_seq2seq.embedding_rnn_seq2seq(
+        ])'''
+
+        out_weight = tf.Variable(
+                tf.random_uniform([params['n_hidden_layers'], params['vocab_size']], -1.0, 1.0, dtype=tf.float32),
+                name='out_weight')
+        out_bias = tf.Variable(
+                tf.random_uniform([params['vocab_size']], -1.0, 1.0, dtype=tf.float32),
+                name='out_bias')
+
+        outputs_proj, states = tf.contrib.legacy_seq2seq.embedding_attention_seq2seq(
                 encoder_inputs=encoder_inputs,
                 decoder_inputs=decoder_inputs,
                 cell=cell,
                 num_encoder_symbols=params['vocab_size'],
                 num_decoder_symbols=params['vocab_size'],
                 embedding_size=params['embedding_size'],
+                output_projection=(out_weight, out_bias),
+                feed_previous=tf.logical_not(is_train),
                 dtype=tf.float32)
 
-        outputs_stacked = tf.stack(outputs, axis=0)
-        word_ids = tf.argmax(outputs_stacked, axis=1)
-        print(word_ids.shape)
+        outputs = [tf.matmul(out, out_weight) + out_bias for out in outputs_proj]
+        outputs_stacked = tf.stack(outputs, axis=1)
+        word_ids = tf.argmax(outputs_stacked, axis=2)
 
         # Make loss function. Note: we're training an autoencoder, so
         # train and hit the original sentence
-        '''seq_weights = tf.Variable(
-                tf.random_uniform(
-                    [params['batch_size'], params['comment_size']],
-                    -1.0, 1.0, dtype=tf.float32),
-                name='seq_weights')'''
-
         loss = softmax_xent_loss_sequence(
                 logits=outputs_stacked,
                 targets=x_input,
