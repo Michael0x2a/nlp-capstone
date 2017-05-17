@@ -11,6 +11,7 @@ import sys
 import numpy as np  # type: ignore
 
 from data_extraction.wikipedia import *
+from data_extraction.stanford_politeness import load_stanford_data
 from models.bag_of_words import BagOfWordsClassifier
 from models.logistic_classifier import LogisticClassifier
 from models.rnn_classifier import RnnClassifier
@@ -75,10 +76,28 @@ def get_wikipedia_data(category: str = None,
         
     return train, test
 
+def get_stanford_data(use_dev: bool = True) -> Tuple[Data, Data]:
+    train, dev, test = load_stanford_data()
+    
+    if use_dev:
+        out_test = dev
+    else:
+        out_test = test
+
+    train_x = [t.text for t in train]
+    train_y = [t.normalized_score for t in train]
+    out_test_x = [t.text for t in out_test]
+    out_test_y = [t.normalized_score for t in out_test]
+
+    return (train_x, train_y), (out_test_x, out_test_y)
+
+
+
 def main() -> None:
     # List of registered datasets and models
     datasets = {
             'wikipedia': get_wikipedia_data,
+            'stanford': get_stanford_data,
     }
 
     models = {
