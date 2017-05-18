@@ -22,9 +22,11 @@ class ProfanityFilterClassifier(Model[str]):
     base_log_dir = "runs/filter/run{}"
 
     # Core methods that must be implemented
-    def __init__(self, restore_from: Optional[str] = None,
-                       run_num: Optional[int]=None) -> None:
+    def __init__(self, split_by_word: bool = False,
+                       restore_from: Optional[str] = None,
+                       run_num: Optional[int] = None) -> None:
         super().__init__(restore_from, run_num)
+        self.split_by_word = split_by_word
 
     def _get_parameters(self) -> Dict[str, Any]:
         return {}
@@ -43,11 +45,17 @@ class ProfanityFilterClassifier(Model[str]):
         for sentence in xs:
             sentence = sentence.lower()
             attack = False
-            for word in banlist:
-                if word in sentence:
-                    print("Detected banned word: " + word)
-                    attack = True
-                    break
+            if self.split_by_word:
+                split = sentence.split(' ')
+                for word in banlist:
+                    if word in split:
+                        attack = True
+                        break
+            else:
+                for word in banlist:
+                    if word in sentence:
+                        attack = True
+                        break
             if attack:
                 out.append([0.0, 1.0])
             else:
