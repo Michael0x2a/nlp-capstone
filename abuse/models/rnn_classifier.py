@@ -42,7 +42,7 @@ _quotes_at_start = re.compile("''([a-zA-Z])")
 _colons_at_start = re.compile('\\:+([a-zA-Z0-9])')
 
 def to_words(inputs: str) -> List[str]:
-    inputs = re.sub(_url, '$UNK-URL', inputs)
+    #inputs = re.sub(_url, '$UNK-URL', inputs)
     inputs = inputs.replace('=====', '')
     inputs = inputs.replace('====', '')
     inputs = inputs.replace('===', '')
@@ -55,8 +55,8 @@ def to_words(inputs: str) -> List[str]:
     for word in words:
         if word.startswith('//') and word != '//':
             out.append('$UNK-URL')
-            continue
-        out.append(word)
+        else:
+            out.append(word)
     
     return out
 
@@ -88,7 +88,6 @@ def make_vocab_mapping(x: List[Paragraph],
     for key, num in freqs.most_common(max_vocab_size - 1):
         #if num == 1:
         #    continue
-
         out[key] = count
         count += 1
     with open("unks.txt", "w") as stream:
@@ -279,31 +278,31 @@ class RnnClassifier(Model[str]):
     def _build_input(self) -> None:
         with tf.name_scope('inputs'):
             self.x_input = tf.placeholder(
-                    tf.int64, 
+                    tf.int32, 
                     shape=(None, self.comment_size),
                     name='x_input')
             self.y_input = tf.placeholder(
-                    tf.int64,
+                    tf.int32,
                     shape=(None,),
                     name='y_input')
             self.x_lengths = tf.placeholder(
-                    tf.int64,
+                    tf.int32,
                     shape=(None,),
                     name='x_lengths')
             self.input_keep = tf.placeholder(
-                    tf.float64,
+                    tf.float32,
                     shape=tuple(),
                     name='input_keep')
             self.output_keep = tf.placeholder(
-                    tf.float64,
+                    tf.float32,
                     shape=tuple(),
                     name='output_keep')
             self.y_hot = tf.one_hot(
                     self.y_input,
                     depth=self.n_classes,
-                    on_value=tf.constant(1.0, dtype=tf.float64),
-                    off_value=tf.constant(0.0, dtype=tf.float64),
-                    dtype=tf.float64,
+                    on_value=tf.constant(1.0, dtype=tf.float32),
+                    off_value=tf.constant(0.0, dtype=tf.float32),
+                    dtype=tf.float32,
                     name='y_hot_encoded')
             print('y_hot_shape', self.y_hot.shape)
 
@@ -312,15 +311,18 @@ class RnnClassifier(Model[str]):
             # Make embedding vector for words
             # Shape is [?, vocab_size, embedding_size]
             embedding = tf.Variable(
-                    tf.random_uniform([self.vocab_size, self.embedding_size], -1.0, 1.0, dtype=tf.float64),
-                    dtype=tf.float64,
+                    tf.random_uniform([self.vocab_size, self.embedding_size], -1.0, 1.0, dtype=tf.float32),
+                    dtype=tf.float32,
                     name="embedding")
             word_vectors = tf.nn.embedding_lookup(embedding, self.x_input)
 
             self.predictor = self._make_bidirectional_rnn(word_vectors)
-            self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-                    logits=self.predictor, 
-                    labels=self.y_hot),
+            self.loss = tf.reduce_mean(
+                    tf.nn.softmax_cross_entropy_with_logits(
+                        logits=self.predictor, 
+                        labels=self.y_hot,
+                        #targets=self.y_hot,
+                        ),
                     name='loss')
 
             self.optimizer = tf.train.AdamOptimizer(
@@ -337,7 +339,7 @@ class RnnClassifier(Model[str]):
                     tf.argmax(self.predictor, 1), 
                     tf.argmax(self.y_hot, 1))
             accuracy = tf.reduce_mean(
-                    tf.cast(correct_prediction, tf.float64),
+                    tf.cast(correct_prediction, tf.float32),
                     name='accuracy')
             self.output = tf.argmax(self.predictor, 1, name='output')
             self.output_prob = tf.nn.softmax(self.predictor, name='output_prob')
@@ -350,12 +352,12 @@ class RnnClassifier(Model[str]):
             # a list of [?, embedding_size]
             x_unstacked = tf.unstack(word_vectors, self.comment_size, 1)
             output_weight = tf.Variable(
-                    tf.random_normal([self.n_hidden_layers * 2, self.n_classes], dtype=tf.float64),
-                    dtype=tf.float64,
+                    tf.random_normal([self.n_hidden_layers * 2, self.n_classes], dtype=tf.float32),
+                    dtype=tf.float32,
                     name='output_weight')
             output_bias = tf.Variable(
-                    tf.random_normal([self.n_classes], dtype=tf.float64),
-                    dtype=tf.float64,
+                    tf.random_normal([self.n_classes], dtype=tf.float32),
+                    dtype=tf.float32,
                     name='output_bias')
 
 
@@ -389,7 +391,7 @@ class RnnClassifier(Model[str]):
                             #x_unstacked,
                             inputs=word_vectors,
                             sequence_length=self.x_lengths,
-                            dtype=tf.float64)
+                            dtype=tf.float32)
                     
                     # Need to connect outputs
                     outputs = tf.concat(outputs, 2)
@@ -400,19 +402,20 @@ class RnnClassifier(Model[str]):
                     '''
 
                     outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
-                            #tf.contrib.rnn.MultiRNNCell(forwards_cells),
-                            #tf.contrib.rnn.MultiRNNCell(backwards_cells),
-                            forwards_cell,
-                            backwards_cell,
+                            tf.contrib.rnn.MultiRNNCell(forwards_cells),
+                            tf.contrib.rnn.MultiRNNCell(backwards_cells),
+                            #forwards_cell,
+                            #backwards_cell,
                             layer,
-                            dtype=tf.float64,
+                            dtype=tf.float32,
                             scope='bidirectional_rnn_{}'.format(i))
                     layer = outputs
 
             # This is an abuse of scope, but whatever.
             
             # Use the output of the last rnn cell for classification
-            prediction = tf.matmul(outputs[-1], output_weight) + output_bias
+            foo = tf.layers.batch_normalization(outputs[-1])
+            prediction = tf.matmul(foo, output_weight) + output_bias
             return prediction
 
     def train(self, xs: List[str], ys: List[int], **params: Any) -> None:
@@ -432,11 +435,11 @@ class RnnClassifier(Model[str]):
 
         self.session.run(self.init)
         for i in range(self.epoch_size):
-            '''indices = list(range(len(x_final)))
+            indices = list(range(len(x_final)))
             random.shuffle(indices)
             x_lengths_new = [x_lengths[i] for i in indices]
             x_final_new = [x_final[i] for i in indices]
-            ys_new = [ys[i] for i in indices]'''
+            ys_new = [ys[i] for i in indices]
 
             self.train_epoch(i, n_batches, x_lengths, x_final, ys)
 
@@ -446,6 +449,8 @@ class RnnClassifier(Model[str]):
                           xs: List[List[int]], 
                           ys: List[int]) -> None:
         start = time.time()
+
+        losses = 0.0
 
         # Train on dataset
         for batch_num in range(n_batches):
@@ -464,16 +469,19 @@ class RnnClassifier(Model[str]):
                     self.output_keep: self.output_keep_prob,
             }
 
-            self.session.run(self.optimizer, feed_dict=batch_data)
+            summary_data, batch_loss, _ = self.session.run(
+                    [self.summary, self.loss, self.optimizer], 
+                    feed_dict=batch_data)
+            losses += batch_loss
 
         # Report results, using last x_batch and y_batch
-        summary_data, batch_loss = self.session.run(
-                [self.summary, self.loss], 
-                feed_dict=batch_data)
-
         self.logger.add_summary(summary_data, iteration)
         delta = time.time() - start 
-        print("Iteration {}, last batch loss = {:.6f}, time elapsed = {:.3f}".format(iteration, batch_loss, delta))
+        print("Iteration {}, avg batch loss = {:.6f}, num batches = {}, time elapsed = {:.3f}".format(
+            iteration, 
+            losses / n_batches, 
+            n_batches,
+            delta))
 
     def predict(self, xs: List[str]) -> List[List[float]]:
         assert self.vocab_map is not None
