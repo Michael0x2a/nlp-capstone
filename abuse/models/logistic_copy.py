@@ -87,6 +87,20 @@ class CopiedClassifier(Model[str]):
         }
         self.classifier.set_params(**params).fit(xs, ys)
 
+    def report(self) -> None:
+        vec = self.classifier.steps[0][1]
+        reg = self.classifier.steps[2][1]
+
+        uni_char = [char for char in vec.vocabulary_ if len(char) == 1]
+        with open('interesting_data/char_attack_uni.txt', 'w') as stream:
+            out = [(c, self.classifier.predict_proba([c])) for c in uni_char]
+
+            target_class = 1
+            out.sort(key=lambda x: x[1][0][target_class])
+            for x in out:
+                stream.write(str(x) + '\n')
+                print(x)
+
     def predict(self, xs: List[str]) -> List[List[float]]:
         return cast(List[List[float]], self.classifier.predict_proba(xs))
 

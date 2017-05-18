@@ -75,6 +75,33 @@ class BagOfWordsClassifier(Model[str]):
             raise Exception("Bag of words does not take in any extra params to train")
         self.classifier.fit(xs, ys)
 
+    def report_contents(self) -> None:
+        vec = self.classifier.steps[0][1]
+        reg = self.classifier.steps[2][1]
+
+        uni_words = [word for word in vec.vocabulary_ if ' ' not in word]
+        bi_words = [word for word in vec.vocabulary_ if ' ' in word]
+        with open('interesting_data/bag_of_words_unigram_toxicity_results.txt', 'w') as stream:
+            out = [(word, self.classifier.predict_proba([word])) for word in uni_words]
+
+            target_class = 1
+            out.sort(key=lambda x: x[1][0][target_class])
+            for x in out[:1000]:
+                stream.write(str(x) + '\n')
+            stream.write('\n')
+            for x in out[-1000:]:
+                stream.write(str(x) + '\n')
+        with open('interesting_data/bag_of_words_bigram_toxicity_results.txt', 'w') as stream:
+            out = [(word, self.classifier.predict_proba([word])) for word in bi_words]
+
+            target_class = 1
+            out.sort(key=lambda x: x[1][0][target_class])
+            for x in out[:1000]:
+                stream.write(str(x) + '\n')
+            stream.write('\n')
+            for x in out[-1000:]:
+                stream.write(str(x) + '\n')
+
     def predict(self, xs: List[str]) -> List[List[float]]:
         return cast(List[List[float]], self.classifier.predict_proba(xs))
 
