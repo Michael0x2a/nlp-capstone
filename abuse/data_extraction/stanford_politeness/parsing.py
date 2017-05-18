@@ -56,17 +56,29 @@ if __name__ == '__main__':
             'data/stanford-politeness',
             ['stack-exchange.annotated', 'wikipedia.annotated'],
             AnnotatedRequest)
+    combo = train + dev + test
+
+    print("Lengths")
     print(len(train))
     print(len(dev))
     print(len(test))
-    print(len(train) + len(dev) + len(test))
+    print(len(combo))
+    print()
 
-    scores = []
-    for t in train:
-        scores.append(t.normalized_score)
-    for t in dev:
-        scores.append(t.normalized_score)
-    for t in test:
-        scores.append(t.normalized_score)
-
+    scores = [t.normalized_score for t in combo]
+    print("Scores")
     print(min(scores), max(scores), sum(scores) / len(scores))
+    print()
+
+    import nltk
+    import statistics
+    tlen = [len(nltk.word_tokenize(t.text)) for t in combo]
+    print("Text info")
+    print(min(tlen), max(tlen), statistics.mean(tlen), statistics.stdev(tlen))
+    print()
+
+    clen = [len(t.text) for t in combo]
+    print("Text info")
+    print(min(clen), max(clen), statistics.mean(clen), statistics.stdev(clen))
+    print()
+
