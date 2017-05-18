@@ -78,3 +78,6 @@ class BagOfWordsClassifier(Model[str]):
     def predict(self, xs: List[str]) -> List[List[float]]:
         return cast(List[List[float]], self.classifier.predict_proba(xs))
 
+    def predict_log(self, xs: List[str]) -> List[List[float]]:
+        return cast(List[List[float]], self.classifier.predict_log_proba(xs))
+
