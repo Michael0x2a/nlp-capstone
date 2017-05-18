@@ -7,6 +7,7 @@ import numpy as np  # type: ignore
 
 from models.bag_of_words import BagOfWordsClassifier
 from models.rnn_classifier import to_words, truncate_and_pad, make_vocab_mapping, vectorize_paragraph, WordId
+from data_extraction.stanford_politeness import load_stanford_data
 import utils.file_manip as fmanip
 from data_extraction.wikipedia import *
 
@@ -30,15 +31,18 @@ def main() -> None:
     # Hyperparameters
     params = {
             #'vocab_size': 100000,
-            'vocab_size': 30000,
+            'vocab_size': 13000,
             'embedding_size': 64,
             'n_hidden_layers': 512,
             'comment_size': 100,
             'batch_size': 50,
-            'epoch_size': 20,
+            'epoch_size': 15,
             'input_keep': 1.0,
             'output_keep': 0.7,
             'use_small': True,
+            'save_path': 'filter_model/attack_full5',
+            'save?': True,
+            'restore?': False,
     }  # type: Params
     log_dir = 'logs/filter/runx'
 
@@ -54,7 +58,10 @@ def main() -> None:
             'attack', 
             'attack',
             use_small=params['use_small'])
-    y_train_hard = [int(foo > 0.5) for foo in y_train]
+
+    #(x_train, y_train), (x_test, y_test) = get_stanford_data()
+
+    y_train_hard = [int(foo < 0.3) for foo in y_train]
     attack_clf = BagOfWordsClassifier()
     attack_clf.train(x_train, y_train_hard)
     print("Done training bag of words")
@@ -70,6 +77,7 @@ def main() -> None:
                 log_dir,
                 graph=tf.get_default_graph())
         session = tf.Session(graph = tf.get_default_graph())
+        init_op = tf.initialize_all_variables()
 
         nodes = {
                 'x_input': x_input,
@@ -84,12 +92,23 @@ def main() -> None:
                 'summary': summary,
                 'logger': logger,
                 'session': session,
+                'init_op': init_op,
         }
+        saver = tf.train.Saver()
 
 
-    print("Training")
-    params['train'] = True
-    train(x_final, x_lengths_orig, nodes, params)
+    if params['restore?']:
+        fmanip.ensure_folder_exists(params['save_path'])
+        session = restore_model(saver, params['save_path'])
+        nodes['session'] = session
+    else:
+        print("Training")
+        params['train'] = True
+        train(x_final, x_lengths_orig, nodes, params)
+
+        if params['save?']:
+            fmanip.ensure_folder_exists(params['save_path'])
+            save_model(saver, session, params['save_path'])
 
     print("Predicting")
     # Warning: input size must be 100 for now (batch size is fixed; haven't fixed yet)
@@ -128,8 +147,24 @@ def main() -> None:
         print()
 
 
+
+def save_model(saver: Any,
+               session: Any,
+               pathname: str,
+               filename: str = "model.ckpt") -> None:
+    saver.save(session, fmanip.join(pathname, filename))  
+
+def restore_model(saver: Any,
+                  pathname: str, 
+                  filename: str = "model.ckpt") -> None:
+    session = tf.Session(graph=tf.get_default_graph())
+    saver.restore(session, fmanip.join(pathname, filename))  
+    return session
+
+
+
 def train(x_final: List[List[int]], x_lengths: List[int], nodes: Nodes, params: Params) -> None:
-    nodes['session'].run(tf.initialize_all_variables())
+    nodes['session'].run(nodes['init_op'])
     n_batches = int(len(x_final) // params['batch_size'])
 
     for i in range(int(params['epoch_size'])):
@@ -149,8 +184,10 @@ def train_epoch(iteration: int,
     start = time.time()
 
     # Train on dataset
+    print('n_batches', n_batches)
     batch_losses = []
     for batch_num in range(n_batches):
+        #d1 = time.time()
         start_idx = int(batch_num * params['batch_size'])
         end_idx = int((batch_num + 1) * params['batch_size'])
 
@@ -169,6 +206,7 @@ def train_epoch(iteration: int,
                 [nodes['summary'], nodes['sequence_loss'], nodes['optimizer']], 
                 feed_dict=batch_data)
         batch_losses.append(l)
+        #print("    end batch {}; {:.3f} sec".format(batch_num, time.time() - d1))
     nodes['logger'].add_summary(s, iteration)
     delta = time.time() - start 
     print("Iteration {}, average loss = {:.6f} ({} batches), time elapsed = {:.3f}".format(
@@ -286,22 +324,22 @@ def build_seq2seq(input_keep: Any, output_keep: Any, x_input: Any, x_lengths: An
                     if t == '$END':
                         break
                 out.append(' '.join(new_toks))
-            return np.asarray([1 - a for a in clf.predict(out)], dtype=np.float32)
+            return np.asarray([a[1] for a in clf.predict_log(out)], dtype=np.float32)
 
         seq_loss = softmax_xent_loss_sequence(
                 logits=outputs_stacked,
                 targets=x_input,
                 seq_len=x_lengths,
-                max_seq_len=params['comment_size'])
-        agg_loss = tf.reduce_mean(tf.py_func(test, [word_ids], [tf.float32]))
+                max_seq_len=params['comment_size'],
+                reduce_mean=False)
+        agg_loss = tf.py_func(test, [word_ids], [tf.float32])[0]
         print(agg_loss.shape)
 
-        #seqW = tf.Variable(
-        #        tf.random_uniform([], -1.0, 1.0, dtype=tf.float32),
-        #        name='seqW')
-        seqW = 0.6
-        loss = tf.add(tf.multiply(seq_loss, seqW), 
-               tf.multiply(agg_loss, tf.subtract(1.0, seqW)))
+        '''loss_per_sentence = tf.add(
+                tf.multiply(seq_loss, 0.3), 
+                tf.multiply(agg_loss, 3.0))'''
+        loss_per_sentence = 0.001 * seq_loss + 3.0 * agg_loss
+        loss = tf.reduce_mean(loss_per_sentence)
 
         tf.summary.scalar("sequence_loss", loss)
 
@@ -344,6 +382,21 @@ def prep_dataset(xs: List[str], params: Params) -> Tuple[List[List[WordId]], Lis
 
 Primitive = Union[int, float, str, bool]
 Data = Tuple[List[str], List[float]]
+
+def get_stanford_data(use_dev: bool = True) -> Tuple[Data, Data]:
+    train, dev, test = load_stanford_data()
+    
+    if use_dev:
+        out_test = dev
+    else:
+        out_test = test
+
+    train_x = [t.text for t in train]
+    train_y = [t.normalized_score for t in train]
+    out_test_x = [t.text for t in out_test]
+    out_test_y = [t.normalized_score for t in out_test]
+
+    return (train_x, train_y), (out_test_x, out_test_y)
 
 # TODO: Refactor, instead of copying from cmd.py
 def get_wikipedia_data(category: str = None,
