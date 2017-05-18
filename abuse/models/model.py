@@ -53,11 +53,11 @@ def one_hot(y: List[int]) -> List[List[int]]:
             out.append([0, 1])
     return out
 
-class BinaryClassificationMetrics:
+class SoftClassificationMetrics:
     def __init__(self, y_expected: List[int], 
                        y_predicted_prob: List[List[float]]) -> None:
-        y_expected_hot = np.array(one_hot(y_expected))
-        y_predicted = np.argmax(y_predicted_prob, 1)
+        y_expected = [int(y > 0.0) for y in y_expected]
+        y_predicted = [int(y > 0.0) for y in y_predicted_prob]
 
         self.accuracy = metrics.accuracy_score(y_expected, y_predicted)
         self.precision = metrics.precision_score(y_expected, y_predicted, average='binary')
@@ -69,6 +69,48 @@ class BinaryClassificationMetrics:
         self.fpr, self.tpr, self.thr = metrics.roc_curve(
                 y_expected, 
                 y_predicted_prob[:,1])
+
+    def to_table_row(self) -> str:
+        return "| {:.4f}   | {:.4f}    | {:.4f} | {:.4f} | {:.4f} | {:.4f}   |".format(
+                self.accuracy,
+                self.precision,
+                self.recall,
+                self.f1,
+                self.roc_auc,
+                self.spearman)
+
+
+    def get_header(self) -> str:
+        return ("| Accuracy | Precision | Recall | F1     | ROC    | Spearman |\n" +
+                "| -------- | --------- | ------ | ------ | ------ | -------- |")
+
+    def make_roc_curve(self, save_path: str=None) -> Tuple[List[float], List[float], List[float]]:
+        import matplotlib.pyplot as plt  # type: ignore
+        plt.plot(self.fpr, self.tpr)
+        plt.xlabel("False positive rate")
+        plt.ylabel("True positive rate")
+        if save_path is not None:
+            plt.savefig(save_path)
+        else:
+            plt.show()
+        return self.fpr, self.tpr, self.thr
+
+class BinaryClassificationMetrics:
+    def __init__(self, y_expected: List[int], 
+                       y_predicted_prob: List[List[float]]) -> None:
+        y_expected_hot = np.array(one_hot(y_expected))
+        y_predicted = np.argmax(y_predicted_prob, 1)
+
+        self.accuracy = metrics.accuracy_score(y_expected, y_predicted)
+        self.precision = metrics.precision_score(y_expected, y_predicted, average='binary')
+        self.recall = metrics.recall_score(y_expected, y_predicted, average='binary')
+        self.f1 = metrics.f1_score(y_expected, y_predicted, average='binary')
+        self.roc_auc = metrics.roc_auc_score(y_expected, y_predicted_prob, average='macro')
+        self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
+        self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
+        self.fpr, self.tpr, self.thr = metrics.roc_curve(
+                y_expected, 
+                y_predicted_prob)
 
     def to_table_row(self) -> str:
         return "| {:.4f}   | {:.4f}    | {:.4f} | {:.4f} | {:.4f} | {:.4f}   |".format(
