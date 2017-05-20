@@ -18,7 +18,7 @@ from models.rnn_classifier_soft import RnnClassifierSoft
 from models.rnn_char_classifier import RnnCharClassifier
 from models.logistic_copy import CopiedClassifier
 from models.profanity_filter import ProfanityFilterClassifier
-from models.model import Model, BinaryClassificationMetrics, ErrorAnalysis
+from models.model import Model, SoftClassificationMetrics, ErrorAnalysis
 import utils.file_manip as fmanip
 
 Primitive = Union[int, float, str, bool]
@@ -171,7 +171,7 @@ def main() -> None:
     print(train_predicted_y)
 
     print("Training set results:")
-    metrics = BinaryClassificationMetrics(train_y, train_predicted_y)
+    metrics = SoftClassificationMetrics(train_y, train_predicted_y)
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
@@ -179,11 +179,9 @@ def main() -> None:
 
     print("Evaluating full dev/test set...")
     test_predicted_y = classifier.predict(test_x)
-    print(test_y[:20])
-    print(test_predicted_y[:20])
 
     print("Dev/test set results:")
-    metrics = BinaryClassificationMetrics(test_y, test_predicted_y)
+    metrics = SoftClassificationMetrics(test_y, test_predicted_y, split)
     print(metrics.get_header())
     print(metrics.to_table_row())
     print(metrics.confusion_matrix)
@@ -191,7 +189,7 @@ def main() -> None:
 
     if save_analysis:
         print("Saving error analysis...")
-        error_analysis = ErrorAnalysis(test_x, test_y_soft, [foo[1] for foo in test_predicted_y])
+        error_analysis = ErrorAnalysis(test_x, test_y, test_predicted_y)
         error_analysis.save_errors()
 
     print()

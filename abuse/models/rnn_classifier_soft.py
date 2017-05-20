@@ -90,11 +90,15 @@ def make_vocab_mapping(x: List[Paragraph],
         #    continue
         out[key] = count
         count += 1
+    oov_count = 0
     with open("unks.txt", "w") as stream:
         for word in words_set:
             if word not in out:
                 stream.write(word)
                 stream.write("\n")
+                oov_count += freqs[word]
+    total = sum(freqs.values())
+    print("OOV count: {}/{} ({})".format(oov_count, total, oov_count/total))
     return out
 
 def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> List[WordId]:
@@ -222,7 +226,7 @@ class RnnClassifierSoft(Model[str]):
         tf.add_to_collection('loss', self.loss)
         tf.add_to_collection('optimizer', self.optimizer)
         tf.add_to_collection('summary', self.summary)
-        tf.add_to_collection('output', self.output)
+        # tf.add_to_collection('output', self.output)
         tf.add_to_collection('output_prob', self.output_prob)
         tf.add_to_collection('init', self.init)
 
