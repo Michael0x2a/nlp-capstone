@@ -33,6 +33,7 @@
                         <th>Personal attacks</th>
                         <th>Aggression</th>
                         <th>Toxicity</th>
+                        <th>Impoliteness</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -41,27 +42,50 @@
                         <td><div id="profanity-attack"></div></td>
                         <td><div id="profanity-aggression"></div></td>
                         <td><div id="profanity-toxicity"></div></td>
+                        <td><div>N/A</div></td>
                     </tr>
                     <tr>
                         <td>Bag-of-words</td>
                         <td><div id="bag-attack"></div></td>
                         <td><div id="bag-aggression"></div></td>
                         <td><div id="bag-toxicity"></div></td>
+                        <td><div id="bag-stanford"></div></td>
                     </tr>
-                    <!--<tr>
+                    <tr>
                         <td>Logistic Regression</td>
                         <td><div id="lr-attack"></div></td>
                         <td><div id="lr-aggression"></div></td>
                         <td><div id="lr-toxicity"></div></td>
-                    </tr>-->
+                        <td><div id="lr-stanford"></div></td>
+                    </tr>
+                    </tr>
                     <tr>
                         <td>RNN</td>
                         <td><div id="rnn-attack"></div></td>
                         <td><div id="rnn-aggression"></div></td>
                         <td><div id="rnn-toxicity"></div></td>
+                        <td><div id="rnn-stanford"></div></td>
                     </tr>
                 </tbody>
             </table>
+
+            <h1>Abuse remover</h1>
+
+            <h2>Enter comment here</h2>
+
+            <div>
+                <textarea id="comment-area-2" rows="8" cols="50"></textarea>
+            </div>
+
+            <button id="submit-2" type="button btn-lg" class="btn btn-primary">Process</button>
+
+            <div class="spacer"></div>
+
+            <h2>Processed text</h2>
+
+            <div>
+                <textarea id="comment-area-3" rows="8" cols="50"></textarea>
+            </div>
         </div>
 
         <script src="{{ url_for('static', filename='jquery-3.2.1.min.js') }}" 

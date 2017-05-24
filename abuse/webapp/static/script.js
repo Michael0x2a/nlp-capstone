@@ -1,5 +1,6 @@
 $(document).ready(function() {
     var CLASSIFY_URL = "/api/classify";
+    var REWRITE_URL = "/api/rewrite";
     
     function load(div_id, blob) {
         var prob = blob['prob_attack'].toFixed(6);
@@ -12,6 +13,13 @@ $(document).ready(function() {
         } else {
             $(div_id).addClass("prob-bad");
         }
+    }
+
+    function handleRewrite(data) {
+        console.log("Rewriting!");
+        console.log(data);
+
+        $('#comment-area-3').val(data['comment']);
     }
 
     function handleClassified(data) {
@@ -32,6 +40,11 @@ $(document).ready(function() {
         load('#bag-toxicity', data['toxicity']['bag_of_words']);
         load('#lr-toxicity', data['toxicity']['lr']);
         load('#rnn-toxicity', data['toxicity']['rnn']);
+
+        load('#profanity-stanford', data['stanford']['profanity'])
+        load('#bag-stanford', data['stanford']['bag_of_words']);
+        load('#lr-stanford', data['stanford']['lr']);
+        load('#rnn-stanford', data['stanford']['rnn']);
     }
 
     // Document setup
@@ -47,5 +60,17 @@ $(document).ready(function() {
             "data": JSON.stringify({'comment': comment}),
             "dataType": "json"
         }).done(handleClassified);
+    });
+
+    $('#submit-2').click(function() {
+        var comment = $("#comment-area-2").val();
+        console.log(comment);
+        $.ajax({
+            "url": REWRITE_URL, 
+            "type": "POST",
+            "contentType": "application/json",
+            "data": JSON.stringify({'comment': comment}),
+            "dataType": "json"
+        }).done(handleRewrite);
     });
 });
