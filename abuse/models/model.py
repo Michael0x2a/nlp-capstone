@@ -63,7 +63,7 @@ class SoftClassificationMetrics:
         self.precision = metrics.precision_score(y_expected, y_predicted, average='binary')
         self.recall = metrics.recall_score(y_expected, y_predicted, average='binary')
         self.f1 = metrics.f1_score(y_expected, y_predicted, average='binary')
-        self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='macro')
+        self.roc_auc = metrics.roc_auc_score(y_expected, y_predicted_prob, average='macro')
         self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
         self.fpr, self.tpr, self.thr = metrics.roc_curve(
@@ -105,12 +105,12 @@ class BinaryClassificationMetrics:
         self.precision = metrics.precision_score(y_expected, y_predicted, average='binary')
         self.recall = metrics.recall_score(y_expected, y_predicted, average='binary')
         self.f1 = metrics.f1_score(y_expected, y_predicted, average='binary')
-        self.roc_auc = metrics.roc_auc_score(y_expected, y_predicted_prob, average='macro')
+        self.roc_auc = metrics.roc_auc_score(y_expected_hot, y_predicted_prob, average='macro')
         self.spearman = stats.spearmanr(y_expected, y_predicted).correlation
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
         self.fpr, self.tpr, self.thr = metrics.roc_curve(
                 y_expected, 
-                y_predicted_prob)
+                y_predicted_prob[:,1])
 
     def to_table_row(self) -> str:
         return "| {:.4f}   | {:.4f}    | {:.4f} | {:.4f} | {:.4f} | {:.4f}   |".format(
@@ -229,7 +229,7 @@ class Model(Generic[TInput]):
         the given string with the run path; else just restores from the run path.
         (E.g. path="{}/epoch10", run_num=4 -> "runs/run4/epoch10")'''
         print(run_num, path)
-        if run_num is None:
+        '''if run_num is None:
             run_num = cls._get_next_run_num() - 1
         run_dir = cls.base_log_dir.format(run_num)
         if not os.path.exists(run_dir):
@@ -241,7 +241,7 @@ class Model(Generic[TInput]):
                 print("Multiple runs with that number.")
             run_dir = run_dirs[0]
 
-        path = run_dir if path is None else path.format(run_dir)
+        path = run_dir if path is None else path.format(run_dir)'''
 
         assert os.path.isdir(path)
         return cls(
