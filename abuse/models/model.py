@@ -54,10 +54,11 @@ def one_hot(y: List[int]) -> List[List[int]]:
     return out
 
 class SoftClassificationMetrics:
-    def __init__(self, y_expected: List[int], 
-                       y_predicted_prob: List[List[float]]) -> None:
-        y_expected = [int(y > 0.0) for y in y_expected]
-        y_predicted = [int(y > 0.0) for y in y_predicted_prob]
+    def __init__(self, y_expected: List[float],
+                       y_predicted_prob: List[List[float]],
+                       split: float) -> None:
+        y_expected = [int(y > split) for y in y_expected]
+        y_predicted = [int(y > split) for y in y_predicted_prob]
 
         self.accuracy = metrics.accuracy_score(y_expected, y_predicted)
         self.precision = metrics.precision_score(y_expected, y_predicted, average='binary')
@@ -68,7 +69,7 @@ class SoftClassificationMetrics:
         self.confusion_matrix = metrics.confusion_matrix(y_expected, y_predicted)
         self.fpr, self.tpr, self.thr = metrics.roc_curve(
                 y_expected, 
-                y_predicted_prob[:,1])
+                y_predicted_prob)
 
     def to_table_row(self) -> str:
         return "| {:.4f}   | {:.4f}    | {:.4f} | {:.4f} | {:.4f} | {:.4f}   |".format(
