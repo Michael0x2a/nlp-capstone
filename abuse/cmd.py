@@ -12,6 +12,7 @@ import numpy as np  # type: ignore
 
 from data_extraction.wikipedia import *
 from data_extraction.stanford_politeness import load_stanford_data
+from data_extraction.twitter_hate import load_twitter_data
 from models.bag_of_words import BagOfWordsClassifier
 from models.logistic_classifier import LogisticClassifier
 from models.rnn_classifier import RnnClassifier
@@ -91,6 +92,20 @@ def get_stanford_data(use_dev: bool = True) -> Tuple[Data, Data]:
 
     return (train_x, train_y), (out_test_x, out_test_y)
 
+def get_twitter_data(use_dev: bool = True) -> Tuple[Data, Data]:
+    train, dev, test = load_twitter_data()
+    
+    if use_dev:
+        out_test = dev
+    else:
+        out_test = test
+
+    train_x = [t.text for t in train]
+    train_y = [float(t.is_bad) for t in train]
+    out_test_x = [t.text for t in out_test]
+    out_test_y = [float(t.is_bad) for t in out_test]
+
+    return (train_x, train_y), (out_test_x, out_test_y)
 
 
 def main() -> None:
@@ -98,6 +113,7 @@ def main() -> None:
     datasets = {
             'wikipedia': get_wikipedia_data,
             'stanford': get_stanford_data,
+            'twitter': get_twitter_data,
     }
 
     models = {
