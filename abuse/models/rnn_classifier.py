@@ -391,7 +391,8 @@ class RnnClassifier(Model[str]):
                             #x_unstacked,
                             inputs=word_vectors,
                             sequence_length=self.x_lengths,
-                            dtype=tf.float32)
+                            dtype=tf.float32,
+                            scope='bidirectional_rnn_{}'.format(i))
                     
                     # Need to connect outputs
                     outputs = tf.concat(outputs, 2)
@@ -401,20 +402,21 @@ class RnnClassifier(Model[str]):
                     prediction = tf.matmul(last_output, output_weight) + output_bias
                     '''
 
-                    outputs, _, _ = tf.contrib.rnn.static_bidirectional_rnn(
-                            tf.contrib.rnn.MultiRNNCell(forwards_cells),
-                            tf.contrib.rnn.MultiRNNCell(backwards_cells),
-                            #forwards_cell,
-                            #backwards_cell,
+                    outputs, fw, bw = tf.contrib.rnn.static_bidirectional_rnn(
+                            # tf.contrib.rnn.MultiRNNCell(forwards_cells),
+                            # tf.contrib.rnn.MultiRNNCell(backwards_cells),
+                            forwards_cell,
+                            backwards_cell,
                             layer,
                             dtype=tf.float32,
+                            sequence_length=self.x_lengths,
                             scope='bidirectional_rnn_{}'.format(i))
                     layer = outputs
 
             # This is an abuse of scope, but whatever.
             
             # Use the output of the last rnn cell for classification
-            foo = tf.layers.batch_normalization(outputs[-1])
+            foo = tf.layers.batch_normalization(tf.concat([fw.h, bw.h], axis=1))
             prediction = tf.matmul(foo, output_weight) + output_bias
             return prediction
 
@@ -473,9 +475,9 @@ class RnnClassifier(Model[str]):
                     [self.summary, self.loss, self.optimizer], 
                     feed_dict=batch_data)
             losses += batch_loss
+            self.logger.add_summary(summary_data, batch_num + n_batches * iteration)
 
         # Report results, using last x_batch and y_batch
-        self.logger.add_summary(summary_data, iteration)
         delta = time.time() - start 
         print("Iteration {}, avg batch loss = {:.6f}, num batches = {}, time elapsed = {:.3f}".format(
             iteration, 
