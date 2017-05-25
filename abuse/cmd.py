@@ -15,6 +15,7 @@ from data_extraction.stanford_politeness import load_stanford_data
 from models.bag_of_words import BagOfWordsClassifier
 from models.logistic_classifier import LogisticClassifier
 from models.rnn_classifier import RnnClassifier
+from models.rnn_attention_classifier import RnnAttentionClassifier
 from models.rnn_char_classifier import RnnCharClassifier
 from models.logistic_copy import CopiedClassifier
 from models.profanity_filter import ProfanityFilterClassifier
@@ -107,6 +108,7 @@ def main() -> None:
             'copy': CopiedClassifier,
             'rnn': RnnClassifier,
             'rnn_char': RnnCharClassifier,
+            'rnn_attention': RnnAttentionClassifier,
     }  # type: Dict[str, Type[Model]]
 
     # Extracting and verifying command line args
