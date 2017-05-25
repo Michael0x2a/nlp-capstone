@@ -230,7 +230,7 @@ class Model(Generic[TInput]):
         the given string with the run path; else just restores from the run path.
         (E.g. path="{}/epoch10", run_num=4 -> "runs/run4/epoch10")'''
         print(run_num, path)
-        if run_num is None:
+        '''if run_num is None:
             run_num = cls._get_next_run_num() - 1
         run_dir = cls.base_log_dir.format(run_num)
         if not os.path.exists(run_dir):
@@ -242,7 +242,7 @@ class Model(Generic[TInput]):
                 print("Multiple runs with that number.")
             run_dir = run_dirs[0]
 
-        path = run_dir if path is None else path.format(run_dir)
+        path = run_dir if path is None else path.format(run_dir)'''
 
         assert os.path.isdir(path)
         return cls(

@@ -25,13 +25,13 @@ def same_shape(item: Any, dims: Tuple[Any, ...]) -> bool:
         return True
 
 
-def main() -> None:
+def build_rewriter() -> None:
     # Note -- for now, I'm implementing this very simply as possible,
     # for the sake of testing.
     # Hyperparameters
     params = {
             #'vocab_size': 100000,
-            'vocab_size': 13000,
+            'vocab_size': 30000,
             'embedding_size': 64,
             'n_hidden_layers': 512,
             'comment_size': 100,
@@ -40,9 +40,9 @@ def main() -> None:
             'input_keep': 1.0,
             'output_keep': 0.7,
             'use_small': True,
-            'save_path': 'filter_model/attack_full5',
-            'save?': True,
-            'restore?': False,
+            'save_path': 'filter_model/attack_full6',
+            'save?': False,
+            'restore?': True,
     }  # type: Params
     log_dir = 'logs/filter/runx'
 
@@ -110,7 +110,15 @@ def main() -> None:
             fmanip.ensure_folder_exists(params['save_path'])
             save_model(saver, session, params['save_path'])
 
-    print("Predicting")
+    def predict_single(input_sentence):
+        batch= ['ignore' for i in range(params['batch_size'])]
+        batch[0] = input_sentence
+        results = predict(batch, vocab_map, nodes, params)
+        return results[0]
+
+    return predict_single
+
+    '''print("Predicting")
     # Warning: input size must be 100 for now (batch size is fixed; haven't fixed yet)
     # TODO: fix batch size thing
     
@@ -144,7 +152,7 @@ def main() -> None:
         print(y)
         print()
         print('-------')
-        print()
+        print()'''
 
 
 
