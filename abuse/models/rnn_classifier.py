@@ -3,9 +3,6 @@ import os.path
 import shutil
 import json
 import time  # type: ignore
-import random
-from collections import Counter
-import re
 
 import numpy as np  # type: ignore
 import tensorflow as tf  # type: ignore
@@ -18,88 +15,8 @@ from data_extraction.wikipedia import *
 from custom_types import *
 
 from models.model import Model
+from utils.unks import prep_train, shuffle, prep_test, Paragraph, WordId, ParagraphVec, Label, VocabMap
 
-
-print("Done loading imports")
-
-# Labels
-IS_ATTACK = 1
-IS_OK = 0
-
-# Type aliases, for readability
-Paragraph = List[str]
-WordId = int
-ParagraphVec = List[WordId]
-Label = int
-
-stop_words = set(nltk.corpus.stopwords.words('english'))
-
-# Copied from https://mathiasbynens.be/demo/url-regex
-# using @imme_emosol's implementation
-_url = re.compile('(https?|ftp)://(-\\.)?([^\\s/?\\.#-]+\\.?)+(/[^\\s]*)?')
-_missing_space_after_period = re.compile('([a-z])\\.([a-zA-Z])')
-_quotes_at_start = re.compile("''([a-zA-Z])")
-_colons_at_start = re.compile('\\:+([a-zA-Z0-9])')
-
-def to_words(inputs: str) -> List[str]:
-    #inputs = re.sub(_url, '$UNK-URL', inputs)
-    inputs = inputs.replace('=====', '')
-    inputs = inputs.replace('====', '')
-    inputs = inputs.replace('===', '')
-    inputs = inputs.replace('==', '')
-    inputs = inputs.replace('`', "'")
-    inputs = re.sub(_quotes_at_start, (lambda match: "'' {}".format(match.group(1))), inputs)
-    inputs = re.sub(_colons_at_start, (lambda match: match.group(1)), inputs)
-    words = nltk.word_tokenize(inputs)
-    out = []
-    for word in words:
-        if word.startswith('//') and word != '//':
-            out.append('$UNK-URL')
-        else:
-            out.append(word)
-    
-    return out
-
-
-def truncate_and_pad(paragraph: Paragraph, max_length: int) -> Paragraph:
-    # Subtract 2 so we have space for the start and end tokens
-    length = min(len(paragraph), max_length - 2)
-    if length < max_length - 2:
-        padding = max_length - 2 - length
-    else:
-        padding = 0
-
-    out = ["$START"] + paragraph[:length] + ["$END"] + (["$PADDING"] * padding)
-    return out
-
-def make_vocab_mapping(x: List[Paragraph],
-                       max_vocab_size: Optional[int] = None) -> Dict[str, WordId]:
-    freqs = Counter()  # type: Counter[str]
-    words_set = set()
-    for paragraph in x:
-        for word in paragraph:
-            freqs[word] = freqs.get(word, 0) + 1
-            words_set.add(word)
-    out = {'$UNK': 0}
-    count = 1
-    if max_vocab_size is None:
-        max_vocab_size = len(freqs)
-    print("Actual vocab size: {}".format(len(freqs)))
-    for key, num in freqs.most_common(max_vocab_size - 1):
-        #if num == 1:
-        #    continue
-        out[key] = count
-        count += 1
-    with open("unks.txt", "w") as stream:
-        for word in words_set:
-            if word not in out:
-                stream.write(word)
-                stream.write("\n")
-    return out
-
-def vectorize_paragraph(vocab_map: Dict[str, WordId], para: Paragraph) -> List[WordId]:
-    unk_id = vocab_map['$UNK']
-    return [vocab_map.get(word, unk_id) for word in para]
 
 class RnnClassifier(Model[str]):
     base_log_dir = "runs/rnn/run{}"
@@ -426,10 +343,8 @@ class RnnClassifier(Model[str]):
         if len(params) != 0:
             raise Exception("RNN does not take in any extra params to train")
 
-        x_data_raw = [truncate_and_pad(to_words(x), self.comment_size) for x in xs]
-        x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
-        self.vocab_map = make_vocab_mapping(x_data_raw, self.vocab_size)
-        x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
+        x_final, x_lengths, vocab_map = prep_train(xs, self.comment_size, self.vocab_size)
+        self.vocab_map = vocab_map
 
         n_batches = len(x_final) // self.batch_size
 
@@ -437,12 +352,7 @@ class RnnClassifier(Model[str]):
 
         self.session.run(self.init)
         for i in range(self.epoch_size):
-            indices = list(range(len(x_final)))
-            random.shuffle(indices)
-            x_lengths_new = [x_lengths[i] for i in indices]
-            x_final_new = [x_final[i] for i in indices]
-            ys_new = [ys[i] for i in indices]
-
+            x_final_new, x_lengths_new, ys_new = shuffle(x_final, x_lengths, ys)
             self.train_epoch(i, n_batches, x_lengths, x_final, ys)
 
     def train_epoch(self, iteration: int,
@@ -487,9 +397,7 @@ class RnnClassifier(Model[str]):
 
     def predict(self, xs: List[str]) -> List[List[float]]:
         assert self.vocab_map is not None
-        x_data_raw = [truncate_and_pad(to_words(x), self.comment_size) for x in xs]
-        x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
-        x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
+        x_final, x_lengths = prep_test(xs, self.comment_size, self.vocab_map)
         batch_data = {
                 self.x_input: x_final, 
                 self.x_lengths: x_lengths,

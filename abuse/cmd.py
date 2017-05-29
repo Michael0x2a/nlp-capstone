@@ -20,6 +20,7 @@ from models.rnn_attention_classifier import RnnAttentionClassifier
 from models.rnn_char_classifier import RnnCharClassifier
 from models.logistic_copy import CopiedClassifier
 from models.profanity_filter import ProfanityFilterClassifier
+from models.convolution_classifier import ConvolutionClassifier
 from models.model import Model, BinaryClassificationMetrics, ErrorAnalysis
 import utils.file_manip as fmanip
 
@@ -125,6 +126,7 @@ def main() -> None:
             'rnn': RnnClassifier,
             'rnn_char': RnnCharClassifier,
             'rnn_attention': RnnAttentionClassifier,
+            'conv': ConvolutionClassifier,
     }  # type: Dict[str, Type[Model]]
 
     # Extracting and verifying command line args
