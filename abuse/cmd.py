@@ -16,6 +16,7 @@ from data_extraction.twitter_hate import load_twitter_data
 from models.bag_of_words import BagOfWordsClassifier
 from models.logistic_classifier import LogisticClassifier
 from models.rnn_classifier import RnnClassifier
+from models.rnn_dynamic_classifier import RnnDynamicClassifier
 from models.rnn_attention_classifier import RnnAttentionClassifier
 from models.rnn_char_classifier import RnnCharClassifier
 from models.logistic_copy import CopiedClassifier
@@ -126,6 +127,7 @@ def main() -> None:
             'rnn': RnnClassifier,
             'rnn_char': RnnCharClassifier,
             'rnn_attention': RnnAttentionClassifier,
+            'rnn_dynamic': RnnDynamicClassifier,
             'conv': ConvolutionClassifier,
     }  # type: Dict[str, Type[Model]]
 
