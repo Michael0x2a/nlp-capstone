@@ -130,8 +130,8 @@ class RnnAttentionClassifier(Model[str]):
                        vocab_size: int = 141000,
                        embedding_size: int = 32,
                        n_classes: int = 2,
-                       input_keep_prob: float = 1.0,
-                       output_keep_prob: float = 1.0,
+                       input_keep_prob: float = 0.8,
+                       output_keep_prob: float = 0.8,
                        learning_rate: float = 0.001,
                        beta1: float = 0.9,
                        beta2: float = 0.999,
@@ -167,6 +167,7 @@ class RnnAttentionClassifier(Model[str]):
         self.summary = None     # type: Any
         self.output = None      # type: Any
         self.output_prob = None # type: Any
+        self.attention = None   # type: Any
         self.init = None        # type: Any
         self.logger = None      # type: Any
         self.session = None     # type: Any
@@ -191,6 +192,7 @@ class RnnAttentionClassifier(Model[str]):
         assert self.summary is not None
         assert self.output is not None
         assert self.output_prob is not None
+        assert self.attention is not None
         assert self.init is not None
         assert self.logger is not None
         assert self.session is not None
@@ -229,6 +231,7 @@ class RnnAttentionClassifier(Model[str]):
         tf.add_to_collection('summary', self.summary)
         tf.add_to_collection('output', self.output)
         tf.add_to_collection('output_prob', self.output_prob)
+        tf.add_to_collection('attention', self.attention)
         tf.add_to_collection('init', self.init)
 
         saver.save(self.session, fmanip.join(path, 'model'))
@@ -254,6 +257,7 @@ class RnnAttentionClassifier(Model[str]):
         self.summary = tf.get_collection('summary')[0]
         self.output = tf.get_collection('output')[0]
         self.output_prob = tf.get_collection('output_prob')[0]
+        self.attention = tf.get_collection('attention')[0]
         self.init = tf.get_collection('init')[0]
         self.logger = tf.summary.FileWriter(self._get_log_dir(), graph=tf.get_default_graph())
 
@@ -431,6 +435,7 @@ class RnnAttentionClassifier(Model[str]):
             # need to do matrix multiplication manually since TensorFlow's matmul doesn't
             # work with ranks/dims that don't match
             attention = tf.nn.softmax(attention_logits)
+            self.attention = attention
 
             print(attention.get_shape())
 
@@ -471,7 +476,7 @@ class RnnAttentionClassifier(Model[str]):
             x_final_new = [x_final[i] for i in indices]
             ys_new = [ys[i] for i in indices]
 
-            self.train_epoch(i, n_batches, x_lengths, x_final, ys)
+            self.train_epoch(i, n_batches, x_lengths_new, x_final_new, ys_new)
 
     def train_epoch(self, iteration: int,
                           n_batches: int, 
@@ -503,9 +508,9 @@ class RnnAttentionClassifier(Model[str]):
                     [self.summary, self.loss, self.optimizer], 
                     feed_dict=batch_data)
             losses += batch_loss
+            self.logger.add_summary(summary_data, batch_num + n_batches * iteration)
 
         # Report results, using last x_batch and y_batch
-        self.logger.add_summary(summary_data, iteration)
         delta = time.time() - start 
         print("Iteration {}, avg batch loss = {:.6f}, num batches = {}, time elapsed = {:.3f}".format(
             iteration, 
