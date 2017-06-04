@@ -189,7 +189,9 @@ class RnnLanguageModel(Model[str]):
     def _save_model(self, path: str) -> None:
         with open(fmanip.join(path, 'vocab_map.json'), 'w') as f:
             json.dump(self.vocab_map, f)
-        np.save(fmanip.join(path, 'vocab_map_backwards.npy'), self.vocab_map_backwards)
+        # np.save(fmanip.join(path, 'vocab_map_backwards.npy'), self.vocab_map_backwards)
+        with open(fmanip.join(path, 'vocab_map_backwards.json'), 'w') as f:
+            json.dump(self.vocab_map_backwards.tolist(), f)
 
         saver = tf.train.Saver()
 
@@ -200,11 +202,13 @@ class RnnLanguageModel(Model[str]):
         with open(fmanip.join(path, 'vocab_map.json'), 'r') as f:
             self.vocab_map = json.load(f)
         try:
-            self.vocab_map_backwards = np.load(fmanip.join(path, 'vocab_map_backwards.npy'))
-        except IOError:
             with open(fmanip.join(path, 'vocab_map_backwards.json'), 'r') as f:
                 self.vocab_map_backwards = np.array(json.load(f))
-            np.save(fmanip.join(path, 'vocab_map_backwards.npy'), self.vocab_map_backwards)
+            # np.save(fmanip.join(path, 'vocab_map_backwards.npy'), self.vocab_map_backwards)
+        except IOError:
+            self.vocab_map_backwards = np.load(fmanip.join(path, 'vocab_map_backwards.npy'))
+            with open(fmanip.join(path, 'vocab_map_backwards.json'), 'w') as f:
+                json.dump(self.vocab_map_backwards.tolist(), f)
 
         self.session = tf.Session(graph = tf.get_default_graph())
         # saver = tf.train.import_meta_graph(fmanip.join(path, 'tensorflow_graph.meta'))
@@ -223,7 +227,6 @@ class RnnLanguageModel(Model[str]):
             print('output_shape', self.output.shape)
 
             self.summary = tf.summary.merge_all()
-            self.logger = tf.summary.FileWriter(self._get_log_dir(), graph=tf.get_default_graph())
             self.init = tf.global_variables_initializer()
 
         #self.session = tf.Session(config=tf.ConfigProto(log_device_placement=True))
@@ -287,7 +290,7 @@ class RnnLanguageModel(Model[str]):
                     targets=self.x_input[:,1:-1],
                     weights=tf.cast(self.x_mask[:,2:], tf.float32), # drop first 2 to account for cutting out start/end
                     name="language_model_loss")
-            self.loss = self.cls_loss + self.log_perplexity
+            self.loss = self.cls_loss + self.log_perplexity / 4 # hardcode weighting for now
 
             self.optimizer = tf.train.AdamOptimizer(
                     learning_rate=self.learning_rate,
@@ -426,6 +429,9 @@ class RnnLanguageModel(Model[str]):
         exactly once.'''
         if len(params) != 0:
             raise Exception("RNN does not take in any extra params to train")
+
+
+        self.logger = tf.summary.FileWriter(self._get_log_dir(), graph=tf.get_default_graph())
 
         ys = np.array(ys)
         bin_edges = np.concatenate([
