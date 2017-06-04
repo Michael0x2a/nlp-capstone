@@ -1,0 +1,17 @@
+{
+    "batch_size": 125,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "comment_size": 100,
+    "embedding_size": 32,
+    "epoch_size": 10,
+    "epsilon": 1e-08,
+    "input_keep_prob": 0.9,
+    "k_top_words": 50,
+    "learning_rate": 0.001,
+    "n_classes": 2,
+    "n_hidden_layers": 120,
+    "output_keep_prob": 0.9,
+    "run_num": 68,
+    "vocab_size": 10000
+}
