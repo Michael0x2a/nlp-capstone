@@ -28,21 +28,13 @@ print("Done loading imports")
 IS_ATTACK = 1
 IS_OK = 0
 
-def to_word_array(xs: List[str]) -> List[List[str]]:
-    words = [to_words(x) for x in xs]
-    max_len = max(len(x) for x in words)
-    print("max length:", max_len)
-    return [truncate_and_pad(x, 100) for x in words] # DEBUGGING
-
 def add_markers(xs: List[Paragraph]):
     return [["$START"] + x + ["$END"] for x in xs]
 
-def pad(paragraph: Paragraph, lengths: List[int], end: int):
+def pad(paragraph: Paragraph, lengths: List[int]):
     max_len = max(lengths)
     # pad with UNK; value shouldn't matter since it shouldn't be read
-    return [x + [0] * (100 - len(x)) if len(x) <= 100 else
-            x[:99] + [end] for x in paragraph]
-    # return [x + [0] * (max_len - len(x)) for x in paragraph]
+    return [x + [0] * (max_len - len(x)) for x in paragraph]
 
 T = TypeVar("T")
 def chunks(l: List[T], n: int) -> Generator[List[T], None, None]:
@@ -51,14 +43,10 @@ def chunks(l: List[T], n: int) -> Generator[List[T], None, None]:
         yield l[i:i + n]
 
 class RnnDynamicClassifier(Model[str]):
-    base_log_dir = "runs/rnn/run{}"
+    base_log_dir = "runs/rnn_dynamic/run{}"
 
     '''
     RNN classifier
-
-    --comment_size [int; default=100]
-        How long to cap the length of each comment (padding if
-        the comment is shorter)
 
     --batch_size [int; default=125]
 
@@ -72,7 +60,6 @@ class RnnDynamicClassifier(Model[str]):
     '''
     def __init__(self, restore_from: Optional[str] = None,
                        run_num: Optional[int] = None,
-                       comment_size: int = 100,
                        batch_size: int = 125,
                        epoch_size: int = 10,
                        n_hidden_layers: int = 120,
@@ -87,7 +74,6 @@ class RnnDynamicClassifier(Model[str]):
                        epsilon: float = 1e-08) -> None:
 
         # Hyperparameters
-        self.comment_size = comment_size
         self.batch_size = batch_size
         self.epoch_size = epoch_size
         self.n_hidden_layers = n_hidden_layers
@@ -147,7 +133,6 @@ class RnnDynamicClassifier(Model[str]):
 
     def _get_parameters(self) -> Dict[str, Any]:
         return {
-                'comment_size': self.comment_size,
                 'batch_size': self.batch_size,
                 'epoch_size': self.epoch_size,
                 'n_hidden_layers': self.n_hidden_layers,
@@ -228,7 +213,7 @@ class RnnDynamicClassifier(Model[str]):
         with tf.name_scope('inputs'):
             self.x_input = tf.placeholder(
                     tf.int32, 
-                    shape=(None, None), # self.comment_size
+                    shape=(None, None),
                     name='x_input')
             self.y_input = tf.placeholder(
                     tf.int32,
@@ -427,11 +412,11 @@ class RnnDynamicClassifier(Model[str]):
             random.shuffle(bin)
             for batch in chunks(bin, batch_size):
                 if i % 10 == 0:
-                    print("Training batch", i, end="\r")
+                    print("Training batch", i, "size", len(batch), "len", len(xs[batch[0]]), "         ", end="\r")
                 
                 batch_data = {
-                        self.x_lengths: np.minimum(lengths[batch], 100),
-                        self.x_input: pad(xs[batch], lengths[batch], self.vocab_map["$END"]),
+                        self.x_lengths: lengths[batch],
+                        self.x_input: pad(xs[batch], lengths[batch]),
                         self.y_input: ys[batch],
                         self.input_keep: self.input_keep_prob,
                         self.output_keep: self.output_keep_prob,
@@ -453,15 +438,42 @@ class RnnDynamicClassifier(Model[str]):
             delta))
 
     def predict(self, xs: List[str]) -> List[List[float]]:
-        assert self.vocab_map is not None
-        x_data_raw = to_word_array(xs)
-        x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
-        x_final = [vectorize_paragraph(self.vocab_map, para) for para in x_data_raw]
-        batch_data = {
-                self.x_input: x_final, 
-                self.x_lengths: x_lengths,
-                self.input_keep: 1.0,
-                self.output_keep: 1.0,
-        }
-        return cast(List[List[float]], self.session.run(self.output_prob, feed_dict=batch_data))
+        out = np.empty([len(xs), self.n_classes], dtype=np.float32)
+        return self._run(self.output_prob, xs, out)
 
+    def _run(self, tensor: any, xs: List[str], out: List[any]) -> List[any]:
+        assert self.vocab_map is not None
+        bin_edges = np.concatenate([
+                np.arange(0,200,20),
+                np.arange(200,1000,100),
+                np.arange(1000,1500,500),
+                np.arange(1500,3000,500)])
+        words = add_markers(to_words(x) for x in xs)
+        lengths = np.fromiter((len(x) for x in words), dtype=np.int, count=len(xs))
+        ids = np.array([vectorize_paragraph(self.vocab_map, x) for x in words])
+        # (can't create object array from iterator, apparently)
+
+        placements = np.digitize(lengths, bin_edges) - 1
+        bins = [np.where(placements==i)[0] for i in range(len(bin_edges))]
+
+        i = 0
+        for batch in bins:
+            print("Testing batch", i, "size", len(batch), "len", len(xs[batch[0]]), "         ", end="\r")
+            i += 1
+
+            xs_batch = pad(ids[batch], lengths[batch])
+            batch_data = {
+                    self.x_lengths: lengths[batch],
+                    self.x_input: xs_batch,
+                    self.input_keep: 1.0,
+                    self.output_keep: 1.0,
+            }
+
+            result = self.session.run(tensor, feed_dict=batch_data)
+            if isinstance(tensor, list):
+                for t, r in zip(out, result):
+                    t[batch] = r
+            else:
+                out[batch] = result
+        print("                                                     ")
+        return out

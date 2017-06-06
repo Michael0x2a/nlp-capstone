@@ -19,6 +19,7 @@ from models.rnn_classifier import RnnClassifier
 from models.rnn_dynamic_classifier import RnnDynamicClassifier
 from models.rnn_attention_classifier import RnnAttentionClassifier
 from models.rnn_char_classifier import RnnCharClassifier
+from models.rnn_language_model import RnnLanguageModel
 from models.logistic_copy import CopiedClassifier
 from models.profanity_filter import ProfanityFilterClassifier
 from models.convolution_classifier import ConvolutionClassifier
@@ -129,6 +130,7 @@ def main() -> None:
             'rnn_char': RnnCharClassifier,
             'rnn_attention': RnnAttentionClassifier,
             'rnn_dynamic': RnnDynamicClassifier,
+            'rnn_lm': RnnLanguageModel,
             'conv': ConvolutionClassifier,
             'conv_char': ConvolutionCharClassifier,
     }  # type: Dict[str, Type[Model]]
