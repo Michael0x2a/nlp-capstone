@@ -6,23 +6,23 @@ import tensorflow as tf
 import numpy as np
 
 from models.model import Model
-from utils.unks import prep_train, shuffle, prep_test, VocabMap
+from utils.unks import prep_train_char, shuffle, prep_test_char, VocabMap
 import utils.file_manip as fmanip
 
-class ConvolutionClassifier(Model[str]):
+class ConvolutionCharClassifier(Model[str]):
     # default log dir; override this
-    base_log_dir = "runs/conv/run{}"
+    base_log_dir = "runs/conv_char/run{}"
 
     def __init__(self,
                  use_padding: bool = True,
                  stride: int = 1,
-                 dropout: float = 5.0,
+                 dropout: float = 0.5,
                  num_filters: int = 300,
                  filter_sizes: str = '2,3,4,5,6,7',
-                 comment_size: int = 100,
+                 comment_size: int = 555,
                  epoch_size: int = 15,
                  batch_size: int = 125,
-                 vocab_size: int = 130000,
+                 vocab_size: int = 100,
                  embedding_size: int = 64,
                  restore_from: Optional[str] = None,
                  run_num: Optional[int]=None
@@ -135,7 +135,10 @@ class ConvolutionClassifier(Model[str]):
         if len(params) != 0:
             raise Exception("RNN does not take in any extra params to train")
 
-        x_final, x_lengths, vocab_map = prep_train(xs, self.comment_size, self.vocab_size)
+        avg = sum(map(len, xs))
+        print("Average sentence size:", avg / len(xs))
+
+        x_final, x_lengths, vocab_map = prep_train_char(xs, self.comment_size, self.vocab_size)
         self.vocab_map = vocab_map
         n_batches = len(x_final) // self.batch_size
 
@@ -189,7 +192,7 @@ class ConvolutionClassifier(Model[str]):
 
             xs_small = xs[start: end]
 
-            x_final, _ = prep_test(xs_small, self.comment_size, self.vocab_map)
+            x_final, _ = prep_test_char(xs_small, self.comment_size, self.vocab_map)
             batch_data = {
                     self.x_input: x_final, 
                     self.dropout: 1.0,

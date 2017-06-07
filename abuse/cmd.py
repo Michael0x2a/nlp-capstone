@@ -23,6 +23,7 @@ from models.rnn_language_model import RnnLanguageModel
 from models.logistic_copy import CopiedClassifier
 from models.profanity_filter import ProfanityFilterClassifier
 from models.convolution_classifier import ConvolutionClassifier
+from models.convolution_char_classifier import ConvolutionCharClassifier
 from models.model import Model, BinaryClassificationMetrics, ErrorAnalysis
 import utils.file_manip as fmanip
 
@@ -131,6 +132,7 @@ def main() -> None:
             'rnn_dynamic': RnnDynamicClassifier,
             'rnn_lm': RnnLanguageModel,
             'conv': ConvolutionClassifier,
+            'conv_char': ConvolutionCharClassifier,
     }  # type: Dict[str, Type[Model]]
 
     # Extracting and verifying command line args

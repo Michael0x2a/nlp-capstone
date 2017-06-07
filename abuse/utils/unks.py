@@ -89,6 +89,14 @@ def prep_train(xs: List[str], comment_size: int, vocab_size: int) -> Tuple[List[
 
     return x_final, x_lengths, vocab_map
 
+def prep_train_char(xs: List[str], comment_size: int, vocab_size: int) -> Tuple[List[List[int]], List[int], VocabMap]:
+    x_data_raw = [truncate_and_pad(list(x), comment_size) for x in xs]
+    x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
+    vocab_map = make_vocab_mapping(x_data_raw, vocab_size)
+    x_final = [vectorize_paragraph(vocab_map, para) for para in x_data_raw]
+
+    return x_final, x_lengths, vocab_map
+
 def shuffle(xs: List[List[int]], x_lengths: List[int], ys: List[int]) -> Tuple[List[List[int]], List[int], List[int]]:
     indices = list(range(len(xs)))
     random.shuffle(indices)
@@ -104,4 +112,9 @@ def prep_test(xs: List[str], comment_size: int, vocab_map: VocabMap) -> Tuple[Li
     x_final = [vectorize_paragraph(vocab_map, para) for para in x_data_raw]
     return x_final, x_lengths
 
+def prep_test_char(xs: List[str], comment_size: int, vocab_map: VocabMap) -> Tuple[List[List[int]], List[int]]:
+    x_data_raw = [truncate_and_pad(list(x), comment_size) for x in xs]
+    x_lengths = [x.index('$PADDING') if x[-1] == '$PADDING' else len(x) for x in x_data_raw]
+    x_final = [vectorize_paragraph(vocab_map, para) for para in x_data_raw]
+    return x_final, x_lengths
 
