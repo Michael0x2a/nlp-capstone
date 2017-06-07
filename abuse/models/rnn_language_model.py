@@ -411,6 +411,7 @@ class RnnLanguageModel(Model[str]):
             # This is an abuse of scope, but whatever.
             
             # Use the output of the last rnn cell for classification
+            # foo = tf.concat([fw_state.h,bw_state.h], axis=1)
             foo = tf.layers.batch_normalization(tf.concat([fw_state.h,bw_state.h], axis=1))
             # (batch_size, 2*hidden_size)
             prediction = tf.matmul(foo, output_weight) + output_bias
@@ -608,3 +609,22 @@ class RnnLanguageModel(Model[str]):
 
     def perplexity(self, xs: List[str]) -> float:
         return np.exp(self._run_batch(self.log_perplexity, xs))
+
+    def _run_batch_tokenized(self, tensor: any, xs: List[List[str]]) -> any:
+        words = add_markers(x for x in xs)
+        lengths = np.fromiter((len(x) for x in words), dtype=np.int, count=len(xs))
+        ids = [vectorize_paragraph(self.vocab_map, x) for x in words]
+        # (can't create object array from iterator, apparently)
+
+        xs_batch, xs_mask = pad(ids, lengths)
+        batch_data = {
+                self.x_lengths: lengths,
+                self.x_input: xs_batch,
+                self.x_mask: xs_mask,
+                self.input_keep: 1.0,
+                self.output_keep: 1.0,
+        }
+        return self.session.run(tensor, feed_dict=batch_data)
+
+    def perplexity_tokenized(self, xs: List[str]) -> float:
+        return np.exp(self._run_batch_tokenized(self.log_perplexity, xs))
