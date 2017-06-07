@@ -17,13 +17,13 @@ class ConvolutionCharClassifier(Model[str]):
                  use_padding: bool = True,
                  stride: int = 1,
                  dropout: float = 0.5,
-                 num_filters: int = 200,
+                 num_filters: int = 300,
                  filter_sizes: str = '2,3,4,5,6,7',
                  comment_size: int = 555,
                  epoch_size: int = 15,
                  batch_size: int = 125,
-                 vocab_size: int = 1000,
-                 embedding_size: int = 32,
+                 vocab_size: int = 100,
+                 embedding_size: int = 64,
                  restore_from: Optional[str] = None,
                  run_num: Optional[int]=None
                  ) -> None:
